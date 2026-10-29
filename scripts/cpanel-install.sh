@@ -25,9 +25,12 @@ if [ -z "${PHP_BIN:-}" ]; then
   exit 1
 fi
 
-PHP_VER="$("$PHP_BIN" -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')"
+# Shared hosts often disable allow_url_fopen in CLI php.ini — force it on for Composer.
+PHP=( "$PHP_BIN" -d allow_url_fopen=1 -d detect_unicode=0 )
+
+PHP_VER="$("${PHP[@]}" -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')"
 echo "==> PHP: $PHP_BIN ($PHP_VER)"
-"$PHP_BIN" -r 'exit(version_compare(PHP_VERSION, "8.2.0", ">=") ? 0 : 1);' \
+"${PHP[@]}" -r 'exit(version_compare(PHP_VERSION, "8.2.0", ">=") ? 0 : 1);' \
   || { echo "ERROR: Need PHP >= 8.2"; exit 1; }
 
 for CANDIDATE in \
@@ -35,7 +38,7 @@ for CANDIDATE in \
   "$HOME/bin/composer" \
   "$(command -v composer || true)"
 do
-  if [ -n "$CANDIDATE" ] && [ -x "$CANDIDATE" ]; then
+  if [ -n "$CANDIDATE" ] && [ -x "$CANDIDATE" ] || [ -f "$CANDIDATE" ]; then
     COMPOSER_BIN="$CANDIDATE"
     break
   fi
@@ -46,30 +49,31 @@ if [ -z "${COMPOSER_BIN:-}" ]; then
   echo "==> Installing Composer into ~/bin"
   mkdir -p "$HOME/bin"
   cd /tmp
+  # Download with curl (does not need allow_url_fopen), then run installer with flag forced on
   curl -sS https://getcomposer.org/installer -o composer-setup.php
-  "$PHP_BIN" composer-setup.php --install-dir="$HOME/bin" --filename=composer
+  "${PHP[@]}" composer-setup.php --install-dir="$HOME/bin" --filename=composer
   rm -f composer-setup.php
   COMPOSER_BIN="$HOME/bin/composer"
   cd "$APP_ROOT"
 fi
 
 echo "==> Composer: $COMPOSER_BIN"
-"$PHP_BIN" "$COMPOSER_BIN" --version
+"${PHP[@]}" "$COMPOSER_BIN" --version
 
 echo "==> composer install --no-dev"
-"$PHP_BIN" "$COMPOSER_BIN" install --no-dev --optimize-autoloader --no-interaction
+"${PHP[@]}" "$COMPOSER_BIN" install --no-dev --optimize-autoloader --no-interaction
 
 if [ ! -f .env ]; then
   echo "==> Creating .env from .env.example (edit DB_* before migrate)"
   cp .env.example .env
-  "$PHP_BIN" artisan key:generate --force
+  "${PHP[@]}" artisan key:generate --force
   echo "STOP: edit .env (DB credentials, APP_URL), then re-run this script."
   exit 0
 fi
 
 echo "==> migrate + optimize"
-"$PHP_BIN" artisan migrate --force
-"$PHP_BIN" artisan optimize
+"${PHP[@]}" artisan migrate --force
+"${PHP[@]}" artisan optimize
 
 echo "==> Done. vendor/ is installed. Open the site and sign in."
 echo "    Create an admin if needed:"
