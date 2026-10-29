@@ -1,0 +1,12 @@
+# For hosts where the domain's document root can't point at public/ (e.g. the
+# main cPanel domain in public_html): send every request into public/.
+# Where you CAN set the document root to .../public, this file is not used.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Never serve the app's own files directly
+<FilesMatch "^\.|composer\.(json|lock)$|package(-lock)?\.json$|artisan$|phpunit\.xml$|vite\.config\.ts$">
+    Require all denied
+</FilesMatch>

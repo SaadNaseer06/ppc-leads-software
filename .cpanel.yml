@@ -1,0 +1,12 @@
+---
+# cPanel Git Version Control — runs after each Deploy.
+# Repo path: /home/serverlinktestwe/ppc-leads
+# Point the domain document root to: .../ppc-leads/public
+#
+# If migrate/optimize fails, confirm PHP path in MultiPHP Manager
+# (try ea-php83 instead of ea-php82).
+deployment:
+  tasks:
+    - /opt/cpanel/ea-php82/root/usr/bin/php /opt/cpanel/composer/bin/composer install --no-dev --optimize-autoloader --no-interaction
+    - /opt/cpanel/ea-php82/root/usr/bin/php artisan migrate --force
+    - /opt/cpanel/ea-php82/root/usr/bin/php artisan optimize
