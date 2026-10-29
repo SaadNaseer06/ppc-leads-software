@@ -1,11 +1,7 @@
 ---
-# Runs when you click Deploy in cPanel Git Version Control,
-# or when a cPanel deploy webhook fires.
-# App path: /home/serverlinktestwe/public_html/ppcleads.serverlinktestwebsites.com
-#
-# If these fail, switch ea-php82 → ea-php83 to match MultiPHP Manager.
+# Runs on cPanel Git "Deploy HEAD Commit".
+# Path: /home/serverlinktestwe/public_html/ppcleads.serverlinktestwebsites.com
+# Node.js is NOT required on the server (public/build is committed).
 deployment:
   tasks:
-    - /opt/cpanel/ea-php82/root/usr/bin/php /opt/cpanel/composer/bin/composer install --no-dev --optimize-autoloader --no-interaction
-    - /opt/cpanel/ea-php82/root/usr/bin/php artisan migrate --force
-    - /opt/cpanel/ea-php82/root/usr/bin/php artisan optimize
+    - /bin/bash scripts/cpanel-install.sh

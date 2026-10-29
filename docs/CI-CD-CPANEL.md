@@ -33,19 +33,51 @@ Repository path you chose is fine:
 
 (The project root `.htaccess` routes traffic into `public/`.)
 
-### 2. Create `.env` on the server once
+### 2. Install Composer packages on the server (required)
 
-After the first successful clone, in File Manager copy `.env.example` → `.env`,
-set MySQL credentials, `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://…`,
-then in Terminal:
+Git does **not** include `vendor/`. PHP packages must be installed on cPanel.
+**Node.js is not needed** on the server (`public/build` is already in the repo).
+
+#### A. With Terminal / SSH (best)
 
 ```bash
 cd ~/public_html/ppcleads.serverlinktestwebsites.com
-php artisan key:generate --force
-php artisan migrate --force
-php artisan ppc:create-admin you@company.com "Your Name"
-php artisan optimize
+
+# Optional: set PHP 8.2+ for the account first (MultiPHP Manager)
+# Then install everything (Composer + vendor + migrate if .env exists):
+bash scripts/cpanel-install.sh
 ```
+
+If `.env` did not exist yet, the script copies `.env.example`, generates `APP_KEY`,
+and stops so you can edit DB settings. Then run the script again.
+
+Create the first admin:
+
+```bash
+php artisan ppc:create-admin you@company.com "Your Name"
+```
+
+#### B. Without a working `composer` command
+
+The install script downloads Composer into `~/bin` automatically. Or install once:
+
+```bash
+cd ~
+curl -sS https://getcomposer.org/installer | php
+mkdir -p ~/bin && mv composer.phar ~/bin/composer && chmod +x ~/bin/composer
+export PATH="$HOME/bin:$PATH"
+```
+
+#### C. One-click from Git UI
+
+Git™ Version Control → **ppc-leads-software** → **Pull or Deploy** → **Deploy HEAD Commit**.  
+That runs `.cpanel.yml` → `scripts/cpanel-install.sh` (composer install + migrate).
+
+#### D. No Terminal at all
+
+On your PC: `composer install --no-dev --optimize-autoloader`, zip the `vendor`
+folder, upload/extract it into the app root on cPanel, then create `.env` and run
+migrate via a one-shot Cron job (see DEPLOY-CPANEL.md).
 
 ---
 

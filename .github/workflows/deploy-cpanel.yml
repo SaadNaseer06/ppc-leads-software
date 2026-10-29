@@ -32,24 +32,11 @@ jobs:
             APP_DIR="${CPANEL_APP_DIR:-$HOME/public_html/ppcleads.serverlinktestwebsites.com}"
             cd "$APP_DIR"
 
-            PHP_BIN="/opt/cpanel/ea-php82/root/usr/bin/php"
-            COMPOSER_BIN="/opt/cpanel/composer/bin/composer"
-            if [ ! -x "$PHP_BIN" ]; then PHP_BIN="$(command -v php)"; fi
-            if [ ! -x "$COMPOSER_BIN" ]; then COMPOSER_BIN="$(command -v composer)"; fi
-
             echo "==> git pull"
             git fetch origin master
             git reset --hard origin/master
 
-            echo "==> composer install"
-            "$PHP_BIN" "$COMPOSER_BIN" install --no-dev --optimize-autoloader --no-interaction
-
-            if [ -f .env ]; then
-              echo "==> migrate + optimize"
-              "$PHP_BIN" artisan migrate --force
-              "$PHP_BIN" artisan optimize
-            else
-              echo "WARNING: .env missing — skip migrate/optimize"
-            fi
+            echo "==> composer + packages (cpanel-install.sh)"
+            bash scripts/cpanel-install.sh
 
             echo "==> deploy done"
