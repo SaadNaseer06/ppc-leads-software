@@ -45,6 +45,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/websites', [WebsiteController::class, 'store']);
     Route::get('/websites/{id}', [WebsiteController::class, 'show'])->whereNumber('id');
     Route::patch('/websites/{id}', [WebsiteController::class, 'update'])->whereNumber('id');
+    Route::delete('/websites/{id}', [WebsiteController::class, 'destroy'])->whereNumber('id');
 
     Route::get('/admin/users', [UserController::class, 'index']);
     Route::post('/admin/users', [UserController::class, 'store']);

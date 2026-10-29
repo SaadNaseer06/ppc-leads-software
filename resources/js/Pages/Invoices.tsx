@@ -1,16 +1,21 @@
-import { Head, Link } from "@inertiajs/react";
+import { Head, Link, usePage } from "@inertiajs/react";
 import { FileText } from "lucide-react";
 import type { InvoiceRow } from "@/lib/api-types";
+import type { SharedProps } from "@/types";
 import { formatDate, formatMoney } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
+import { CreateInvoiceButton } from "./Invoices/partials/create-invoice-dialog";
 
 export default function Invoices({ invoices, limit: LIMIT }: { invoices: InvoiceRow[]; limit: number }) {
+  const user = usePage<SharedProps>().props.auth.user!;
+
   return (
     <div className="space-y-5">
       <Head title="Invoices" />
       <PageHeader
         title="Invoices"
-        description={`Sales users see the invoices they created; Finance and Super Admin see all. Showing the latest ${LIMIT}.`}
+        description={`Sales and Admin create invoices; Finance and Super Admin see all. Showing the latest ${LIMIT}.`}
+        actions={user.can.create_invoice ? <CreateInvoiceButton /> : null}
       />
 
       <div className="card overflow-hidden">
@@ -18,7 +23,8 @@ export default function Invoices({ invoices, limit: LIMIT }: { invoices: Invoice
           <EmptyState
             icon={<FileText className="h-5 w-5" />}
             title="No invoices yet"
-            description="Create an invoice from a lead's page once the deal is agreed."
+            description="Create an invoice from this page or from a lead once the deal is agreed."
+            action={user.can.create_invoice ? <CreateInvoiceButton /> : null}
           />
         ) : (
           <div className="overflow-x-auto">

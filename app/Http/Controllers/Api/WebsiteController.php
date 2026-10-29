@@ -124,6 +124,25 @@ class WebsiteController extends Controller
         return response()->json(['ok' => true, 'public_key' => $website->public_key]);
     }
 
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canManageWebsites(), 403);
+        $website = Website::query()->visibleTo($user)->findOrFail($id);
+
+        $name = $website->name;
+        $domain = $website->domain;
+        // Leads/conversations keep their rows; website_id is nullOnDelete
+        $website->delete();
+
+        ActivityLog::record($user->id, 'website.delete', 'Website', $id, [
+            'name' => $name,
+            'domain' => $domain,
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
     private function validated(Request $request, bool $partial): array
     {
         $req = $partial ? 'sometimes' : 'required';

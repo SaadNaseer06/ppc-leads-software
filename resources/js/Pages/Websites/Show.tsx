@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/badges";
 import { CopyButton } from "@/components/ui/copy-button";
 import { WebsiteForm } from "./partials/website-form";
-import { RotateKeyButton, SendTestLeadButton } from "./partials/website-actions";
+import { DeleteWebsiteButton, RotateKeyButton, SendTestLeadButton } from "./partials/website-actions";
 
 const EVENT_STYLES: Record<string, string> = {
   processed: "bg-emerald-50 text-emerald-700",
@@ -240,6 +240,19 @@ export default function WebsiteShow(data: WebsiteDetail) {
                 immediately, so update the website straight after.
               </p>
               <RotateKeyButton websiteId={website.id} />
+            </div>
+          </section>
+
+          <section className="card border-red-200">
+            <div className="card-header">
+              <h2 className="card-title text-red-700">Danger zone</h2>
+            </div>
+            <div className="space-y-3 p-4 text-sm text-slate-600">
+              <p className="text-xs text-slate-500">
+                Remove this website from the dashboard. Past leads are kept and unlinked; new capture for this domain
+                stops until you add the site again.
+              </p>
+              <DeleteWebsiteButton websiteId={website.id} websiteName={website.name} />
             </div>
           </section>
         </div>

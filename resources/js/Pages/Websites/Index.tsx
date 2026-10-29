@@ -5,6 +5,7 @@ import type { SharedProps } from "@/types";
 import { formatNumber, formatRelative } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { AddWebsiteButton } from "./partials/website-form";
+import { DeleteWebsiteButton } from "./partials/website-actions";
 
 export default function WebsitesIndex({ websites, brands, unlinked_properties: unlinked }: WebsitesData) {
   const user = usePage<SharedProps>().props.auth.user!;
@@ -74,6 +75,7 @@ export default function WebsitesIndex({ websites, brands, unlinked_properties: u
                   <th className="text-right">Leads (30 days)</th>
                   <th>Last lead</th>
                   <th>Status</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -119,6 +121,16 @@ export default function WebsitesIndex({ websites, brands, unlinked_properties: u
                       ) : (
                         <span className="badge badge-dot">Paused</span>
                       )}
+                    </td>
+                    <td className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Link href={`/websites/${w.id}`} className="btn-secondary btn-sm">
+                          Open
+                        </Link>
+                        {user.can.manage_websites ? (
+                          <DeleteWebsiteButton websiteId={w.id} websiteName={w.name} />
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -105,4 +105,36 @@ class AccessControlTest extends TestCase
         $this->assertSame([$up->id, 'converted'], [$lead->fresh()->assignee_id, $lead->fresh()->status]);
         $this->assertSame(['created', 'assigned', 'status', 'assigned'], $lead->activities()->orderBy('id')->pluck('type')->all());
     }
+
+    public function test_admin_and_super_admin_can_delete_websites_and_leads_stay(): void
+    {
+        $brand = $this->brand();
+        $site = $this->website($brand);
+        $admin = $this->user(Role::Admin, [$brand]);
+        $lead = $this->lead($site);
+
+        $this->actingAs($admin)->deleteJson("/api/websites/{$site->id}")->assertOk();
+        $this->assertDatabaseMissing('websites', ['id' => $site->id]);
+        $this->assertNull($lead->fresh()->website_id);
+
+        $otherBrand = $this->brand();
+        $foreign = $this->website($otherBrand);
+        $this->actingAs($admin)->deleteJson("/api/websites/{$foreign->id}")->assertNotFound();
+
+        $super = $this->user(Role::SuperAdmin);
+        $this->actingAs($super)->deleteJson("/api/websites/{$foreign->id}")->assertOk();
+    }
+
+    public function test_admin_can_create_an_invoice_for_a_visible_lead(): void
+    {
+        $brand = $this->brand();
+        $admin = $this->user(Role::Admin, [$brand]);
+        $lead = $this->lead($this->website($brand));
+
+        $this->actingAs($admin)->postJson('/api/invoices', [
+            'lead_id' => $lead->id,
+            'amount' => 250,
+            'description' => 'Setup fee',
+        ])->assertCreated()->assertJsonPath('number', fn ($n) => is_string($n) && str_starts_with($n, 'INV-'));
+    }
 }

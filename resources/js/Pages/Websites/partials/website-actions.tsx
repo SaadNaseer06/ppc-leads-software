@@ -1,7 +1,41 @@
 import { useState } from "react";
 import { router } from "@inertiajs/react";
-import { FlaskConical, RefreshCw } from "lucide-react";
+import { FlaskConical, RefreshCw, Trash2 } from "lucide-react";
 import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
+
+export function DeleteWebsiteButton({
+  websiteId,
+  websiteName,
+}: {
+  websiteId: number;
+  websiteName: string;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function remove() {
+    const ok = window.confirm(
+      `Remove “${websiteName}”? Existing leads stay in the system but are unlinked from this website. Embed snippets and webhooks for this site stop working immediately.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    const res = await apiRequest(`/api/websites/${websiteId}`, { method: "DELETE" });
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Website removed");
+    router.visit("/websites");
+  }
+
+  return (
+    <button type="button" className="btn-danger btn-sm" onClick={remove} disabled={busy}>
+      <Trash2 className={`h-3.5 w-3.5 ${busy ? "animate-pulse" : ""}`} />
+      {busy ? "Removing…" : "Remove website"}
+    </button>
+  );
+}
 
 export function RotateKeyButton({ websiteId }: { websiteId: number }) {
   const toast = useToast();

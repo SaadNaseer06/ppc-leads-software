@@ -121,7 +121,7 @@ class User extends Authenticatable
 
     public function canCreateInvoice(): bool
     {
-        return $this->isSales() || $this->hasGlobalAccess();
+        return $this->isSales() || $this->hasGlobalAccess() || $this->role === Role::Admin;
     }
 
     public function canViewInvoices(): bool
