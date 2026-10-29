@@ -54,6 +54,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/admin/brands', [BrandController::class, 'index']);
     Route::post('/admin/brands', [BrandController::class, 'store']);
     Route::patch('/admin/brands', [BrandController::class, 'update']);
+    Route::delete('/admin/brands/{id}', [BrandController::class, 'destroy'])->whereNumber('id');
 
     Route::get('/invoices', [InvoiceController::class, 'index']);
     Route::post('/invoices', [InvoiceController::class, 'store']);

@@ -7,7 +7,9 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Brand;
+use App\Models\Invoice;
 use App\Models\Lead;
+use App\Models\Website;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -72,6 +74,52 @@ class BrandController extends Controller
 
         Brand::findOrFail($data['brand_id'])->update(['auto_assign_enabled' => $data['auto_assign_enabled']]);
         ActivityLog::record($user->id, 'brand.auto_assign_toggle', 'Brand', $data['brand_id'], ['enabled' => $data['auto_assign_enabled']]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Super Admin / Developer only. Removes the brand and its websites, leads and invoices.
+     * Team memberships for the brand are cleared; users themselves are kept.
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canManageBrands(), 403);
+
+        $brand = Brand::query()->visibleTo($user)->findOrFail($id);
+        $websites = $brand->websites()->count();
+        $leads = $brand->leads()->count();
+        $invoices = Invoice::where('brand_id', $brand->id)->count();
+
+        if (! $request->boolean('force') && ($websites > 0 || $leads > 0 || $invoices > 0)) {
+            return response()->json([
+                'error' => 'This brand still has related data. Confirm force delete to remove it and everything under it.',
+                'websites' => $websites,
+                'leads' => $leads,
+                'invoices' => $invoices,
+                'requires_force' => true,
+            ], 422);
+        }
+
+        $name = $brand->name;
+        DB::transaction(function () use ($brand) {
+            // Invoices block lead/brand deletes (restrictOnDelete)
+            Invoice::where('brand_id', $brand->id)->delete();
+            // Lead activities cascade; conversations.lead_id / brand_id null on delete
+            Lead::where('brand_id', $brand->id)->delete();
+            // Websites block brand deletes (restrictOnDelete)
+            Website::where('brand_id', $brand->id)->delete();
+            $brand->users()->detach();
+            $brand->delete();
+        });
+
+        ActivityLog::record($user->id, 'brand.delete', 'Brand', $id, [
+            'name' => $name,
+            'websites' => $websites,
+            'leads' => $leads,
+            'invoices' => $invoices,
+        ]);
 
         return response()->json(['ok' => true]);
     }

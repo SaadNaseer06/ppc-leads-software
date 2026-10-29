@@ -4,7 +4,7 @@ import type { BrandsData } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
 import { formatNumber } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
-import { AutoAssignToggle, CreateBrandButton } from "./partials/brand-controls";
+import { AutoAssignToggle, CreateBrandButton, DeleteBrandButton } from "./partials/brand-controls";
 
 export default function BrandsIndex({ brands }: BrandsData) {
   const user = usePage<SharedProps>().props.auth.user!;
@@ -31,6 +31,7 @@ export default function BrandsIndex({ brands }: BrandsData) {
                   <th className="text-right">Team</th>
                   <th className="text-right">Waiting to be assigned</th>
                   <th>Auto-assign (round-robin)</th>
+                  {user.can.manage_brands ? <th className="text-right">Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -66,6 +67,11 @@ export default function BrandsIndex({ brands }: BrandsData) {
                           </span>
                         </div>
                       </td>
+                      {user.can.manage_brands ? (
+                        <td className="text-right">
+                          <DeleteBrandButton brandId={b.id} brandName={b.name} />
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}

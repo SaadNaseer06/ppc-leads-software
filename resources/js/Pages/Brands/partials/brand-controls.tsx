@@ -1,8 +1,73 @@
 import { FormEvent, useState } from "react";
 import { router } from "@inertiajs/react";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { apiRequest, useToast } from "@/components/ui/toast";
+import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
+
+export function DeleteBrandButton({ brandId, brandName }: { brandId: number; brandName: string }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function remove() {
+    if (!window.confirm(`Delete brand “${brandName}”?`)) return;
+
+    setBusy(true);
+    try {
+      const first = await fetch(`/api/admin/brands/${brandId}`, {
+        method: "DELETE",
+        headers: apiHeaders(false),
+        credentials: "same-origin",
+      });
+      const firstBody = await first.json().catch(() => ({}));
+
+      if (first.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+
+      if (first.ok) {
+        toast.success("Brand deleted");
+        router.reload();
+        return;
+      }
+
+      if (first.status === 422 && firstBody.requires_force) {
+        const typed = window.prompt(
+          `“${brandName}” has ${firstBody.websites ?? 0} websites, ${firstBody.leads ?? 0} leads and ${firstBody.invoices ?? 0} invoices.\n\nDeleting the brand permanently removes all of that. Team members stay but lose this brand.\n\nType DELETE to confirm.`
+        );
+        if (typed !== "DELETE") {
+          if (typed !== null) toast.error("Type DELETE in capital letters to confirm");
+          return;
+        }
+
+        const second = await fetch(`/api/admin/brands/${brandId}?force=1`, {
+          method: "DELETE",
+          headers: apiHeaders(false),
+          credentials: "same-origin",
+        });
+        const secondBody = await second.json().catch(() => ({}));
+        if (!second.ok) {
+          toast.error(secondBody.error || `Request failed (${second.status})`);
+          return;
+        }
+        toast.success("Brand deleted");
+        router.reload();
+        return;
+      }
+
+      toast.error(firstBody.error || `Request failed (${first.status})`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button type="button" className="btn-danger btn-sm" onClick={remove} disabled={busy} title="Delete brand">
+      <Trash2 className={`h-3.5 w-3.5 ${busy ? "animate-pulse" : ""}`} />
+      {busy ? "Deleting…" : "Delete"}
+    </button>
+  );
+}
 
 export function AutoAssignToggle({ brandId, enabled, eligible }: { brandId: number; enabled: boolean; eligible: number }) {
   const toast = useToast();
