@@ -121,15 +121,15 @@ It deletes webhook and audit logs older than 90 days once a day. The app works w
 
 ## Updating (CI/CD)
 
-1. On your laptop: commit → `git push origin master`.
-2. In cPanel → *Git™ Version Control* → this repo → **Pull or Deploy**:
-   - **Update from Remote**
-   - **Deploy HEAD Commit** (runs `.cpanel.yml` automatically)
+Prefer the automated pipeline in **[CI-CD-CPANEL.md](CI-CD-CPANEL.md)** (GitHub Actions → SSH pull on every push to `master`).
+
+Manual fallback in cPanel → *Git™ Version Control* → **Pull or Deploy**:
+**Update from Remote** → **Deploy HEAD Commit** (runs `.cpanel.yml`).
 
 Manual equivalent in Terminal:
 
 ```bash
-cd /home/serverlinktestwe/ppc-leads
+cd /home/serverlinktestwe/public_html/ppcleads.serverlinktestwebsites.com
 composer install --no-dev --optimize-autoloader
 php artisan migrate --force
 php artisan optimize
