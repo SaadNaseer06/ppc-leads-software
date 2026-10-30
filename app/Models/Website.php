@@ -12,7 +12,7 @@ class Website extends Model
 {
     protected $fillable = [
         'brand_id', 'name', 'domain', 'public_key', 'tawk_property_id', 'tawk_webhook_secret',
-        'active', 'last_lead_at', 'last_chat_at',
+        'active', 'chat_enabled', 'last_lead_at', 'last_chat_at',
     ];
 
     protected $hidden = ['tawk_webhook_secret'];
@@ -22,6 +22,7 @@ class Website extends Model
         return [
             'tawk_webhook_secret' => 'encrypted',
             'active' => 'boolean',
+            'chat_enabled' => 'boolean',
             'last_lead_at' => 'datetime',
             'last_chat_at' => 'datetime',
         ];
@@ -65,6 +66,11 @@ class Website extends Model
     public function embedSnippet(): string
     {
         return '<script src="'.url('/ppc-leads.js').'" data-site="'.$this->public_key.'" async></script>';
+    }
+
+    public function chatSnippet(): string
+    {
+        return '<script src="'.url('/ppc-chat.js').'" data-site="'.$this->public_key.'" async></script>';
     }
 
     public function intakeUrl(): string

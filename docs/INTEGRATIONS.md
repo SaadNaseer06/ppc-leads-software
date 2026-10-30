@@ -1,6 +1,6 @@
-# Connecting websites and Tawk.to
+# Connecting websites, live chat, and Tawk.to
 
-Every website gets its own **website key** (Websites → open the site). Leads can arrive three ways; you
+Every website gets its own **website key** (Websites → open the site). Leads can arrive several ways; you
 can use more than one on the same site. `YOUR-APP` below is the app's public address (`APP_URL` in `.env`);
 the website's page in the dashboard shows the exact snippets with it filled in.
 
@@ -53,30 +53,67 @@ If the same email or phone (last 10 digits) submits again to the same brand with
 created. The existing lead's submission count goes up, the new message appears on its timeline, and a
 "Lost" lead is reopened as "New".
 
-## 3. Tawk.to
+## 3. Native live chat (recommended)
 
-1. On the website's page in this app, copy the **Tawk.to webhook URL** (`https://YOUR-APP/api/webhooks/tawk`).
+Replaces Tawk.to for new traffic. Visitors chat in a first-party widget; agents reply only from this app's
+**Chats** page. Realtime uses [Pusher](https://pusher.com) (cloud) so shared cPanel hosting does not need Redis
+or a WebSocket server.
+
+### Server `.env`
+
+```ini
+BROADCAST_CONNECTION=pusher
+PUSHER_APP_ID=
+PUSHER_APP_KEY=
+PUSHER_APP_SECRET=
+PUSHER_APP_CLUSTER=mt1
+VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
+VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+```
+
+Create a free Channels app at pusher.com, paste the keys, then rebuild the dashboard assets if you change
+`VITE_*` (`npm run build`) so the Chats page can subscribe. The visitor widget reads key/cluster from the
+session API response, so it does not need a Vite rebuild.
+
+### Website snippet
+
+On the website's page, copy the **Live chat widget** snippet:
+
+```html
+<script src="https://YOUR-APP/ppc-chat.js" data-site="pk_xxxxxxxx" async></script>
+```
+
+Optional attributes: `data-title`, `data-color`, `data-greeting`, `data-endpoint` (override app URL).
+
+What happens:
+
+- Opening the bubble creates/resumes a conversation (`provider=native`).
+- The first visitor message creates a lead (source "Live chat") via the same intake path as forms/Tawk.
+- Messages broadcast on private channel `chat.{id}`; if Pusher is missing or fails, the widget polls every 3s.
+- Agents reply and end chats from **Chats**. Old Tawk rows stay visible as read-only history.
+
+Toggle **Enable live chat widget** in website settings to reject new sessions without removing the snippet.
+
+## 4. Tawk.to (legacy)
+
+Keep only if you still need historical Tawk chats or offline tickets. New sites should use the native widget.
+
+1. On the website's page in this app, open **Legacy · Tawk.to** and copy the webhook URL
+   (`https://YOUR-APP/api/webhooks/tawk`).
 2. In Tawk.to: **Administration → Settings → Webhooks → Create webhook**. Paste the URL and tick
    **Chat Start**, **Chat End**, **Chat Transcript Created** and **New Ticket**.
-3. Copy the webhook's **secret key** and the **property ID** (the first ID in the widget code:
-   `embed.tawk.to/PROPERTY_ID/...`) into the website's settings here.
+3. Copy the webhook's **secret key** and the **property ID** into the website's settings here.
 
 What happens:
 
 - **Chat Start** creates the conversation, and a lead (source "Live chat") as soon as the visitor has sent a message.
-  If the visitor's email matches a recent lead, the chat is attached to that lead instead.
-- **Chat End / Transcript** stores the full transcript and copies the visitor's name and email onto the lead
-  if they shared them during the chat.
-- **New Ticket** (offline form when nobody is online) creates a lead with source "Offline message".
-- Requests are verified with the HMAC-SHA1 signature Tawk.to sends; retries are de-duplicated by event ID.
-
-If chats arrive from a property that isn't linked to any website (this needs `TAWK_WEBHOOK_SECRET` in `.env` so
-they can be verified), they are kept and listed on the Websites page. Linking the property ID imports them as leads.
-
-Replies are sent from Tawk.to; this app shows the conversation next to the lead.
+- **Chat End / Transcript** stores the full transcript and copies contact details onto the lead when shared.
+- **New Ticket** creates a lead with source "Offline message".
+- Replies stay in Tawk.to; this app shows the thread as read-only.
 
 ## Checking the setup
 
 - **Send test lead** on the website's page posts through the real public endpoint.
-- The website's page shows when the last form lead and chat arrived, plus the latest Tawk.to deliveries
-  with their status (`processed`, `rejected` with the reason, `failed`).
+- Open the chat bubble on the client site, send a message, and confirm it appears under **Chats** (and as a lead).
+- Reply from **Chats** and confirm the visitor widget shows the answer (Pusher or poll).
+- The website's page shows when the last form lead and chat arrived, plus legacy Tawk delivery status if linked.

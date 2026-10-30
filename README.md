@@ -9,8 +9,9 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
 **cPanel** hosting with no Node.js. See **[docs/DEPLOY-CPANEL.md](docs/DEPLOY-CPANEL.md)**.
 
 ```
- client websites ──(embed script / form webhooks)──┐
- Tawk.to ─────────────(signed webhooks)────────────┤
+ client websites ──(form embed / chat widget)──────┐
+ Pusher cloud ────(realtime chat)──────────────────┤
+ Tawk.to ─────────(legacy webhooks, optional)──────┤
  your team's browser ──(session cookie)────────────┼──► Laravel ──► MySQL
 ```
 
@@ -19,8 +20,9 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
 - **Multi-website capture.** Each website gets a key. Leads arrive through a drop-in embed script that captures
   every form and stores ad attribution (gclid, UTM, landing page) for 90 days, or through a webhook URL
   (Elementor, WPForms, Gravity Forms, Zapier, custom code).
-- **Tawk.to.** Signed webhooks turn live chats and offline messages into leads, store full transcripts, and fill
-  in the visitor's name and email when they share them mid-chat.
+- **Native live chat.** Drop-in `ppc-chat.js` widget; agents reply from **Chats**. Pusher (cloud) delivers
+  messages in realtime on shared hosting; polling is the fallback. First visitor message creates a lead.
+- **Tawk.to (legacy).** Optional signed webhooks keep old chats as read-only history.
 - **Assignment.** Assign one lead or hundreds at once. Each brand can rotate new leads round-robin across its
   Front Sales reps (safe under concurrent traffic). The assign menu shows each rep's open-lead workload.
   Deactivating a user signs them out and returns their open leads to the unassigned queue.
@@ -68,7 +70,9 @@ app/Enums/                       Role, LeadStatus, LeadSource, Channel
 app/Models/                      Eloquent models; each has a visibleTo($user) scope = who may see what
 app/Models/User.php              permission rules (canAssignLeads, canViewFinance, ...)
 app/Services/LeadIntake.php      every new lead: field mapping, de-duplication, attribution, auto-assign
-app/Services/TawkService.php     Tawk.to signature check, chat/transcript/ticket handling
+app/Services/NativeChatService.php  first-party chat sessions, replies, lead linking
+app/Services/TawkService.php     Tawk.to signature check, chat/transcript/ticket handling (legacy)
+public/ppc-chat.js               live chat widget for client websites
 app/Services/LeadAssignment.php  assign, round-robin (row lock + deadlock retry), status changes
 app/Services/LeadQuery.php       list filters, full-text search, keyset pagination, capped counts
 app/Services/Dashboard.php       one-pass GROUP BY behind every dashboard number

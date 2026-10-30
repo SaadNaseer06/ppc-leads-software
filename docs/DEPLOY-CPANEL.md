@@ -81,10 +81,20 @@ DB_PASSWORD="the password from step 1"
 REPORT_TIMEZONE=America/New_York     # your business timezone
 SESSION_SECURE_COOKIE=true           # site is served over HTTPS
 LOG_LEVEL=warning
+
+# Native live chat (Pusher cloud — free sandbox is enough to start)
+BROADCAST_CONNECTION=pusher
+PUSHER_APP_ID=
+PUSHER_APP_KEY=
+PUSHER_APP_SECRET=
+PUSHER_APP_CLUSTER=mt1
+VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
+VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
 ```
 
 Keep `SESSION_DRIVER=database`, `CACHE_STORE=database` and `QUEUE_CONNECTION=sync`. No Redis, queue worker or
-background process is needed.
+WebSocket server is needed — chat realtime goes through Pusher. After changing `VITE_PUSHER_*`, rebuild assets
+locally (`npm run build`) and deploy `public/build` so the dashboard Chats page can subscribe.
 
 ## 5. Install
 

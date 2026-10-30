@@ -8,10 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** A Tawk.to live chat or offline message (ticket) */
+/** A native or Tawk.to live chat / offline message (ticket) */
 class Conversation extends Model
 {
     protected $guarded = ['id'];
+
+    protected $hidden = ['visitor_token'];
 
     protected function casts(): array
     {
@@ -31,6 +33,11 @@ class Conversation extends Model
     public function lead(): BelongsTo
     {
         return $this->belongsTo(Lead::class);
+    }
+
+    public function assignedAgent(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_agent_id');
     }
 
     public function messages(): HasMany

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
+use App\Services\NativeChatService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,6 +12,8 @@ use Illuminate\Http\Request;
 class ChatController extends Controller
 {
     private const PAGE = 30;
+
+    public function __construct(private NativeChatService $native) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -53,15 +56,50 @@ class ChatController extends Controller
                 ] : null,
             ] : null,
             'unlinked' => $user->hasGlobalAccess() ? Conversation::whereNull('website_id')->count() : 0,
+            'pusher' => [
+                'key' => config('broadcasting.connections.pusher.key'),
+                'cluster' => config('broadcasting.connections.pusher.options.cluster') ?: 'mt1',
+            ],
+        ]);
+    }
+
+    public function storeMessage(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canViewChats(), 403);
+
+        $conversation = Conversation::query()->visibleTo($user)->findOrFail($id);
+        $data = $request->validate(['body' => ['required', 'string', 'max:20000']]);
+
+        $message = $this->native->agentReply($conversation, $user, $data['body']);
+
+        return response()->json([
+            'message' => $message->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
+        ], 201);
+    }
+
+    public function end(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canViewChats(), 403);
+
+        $conversation = Conversation::query()->visibleTo($user)->findOrFail($id);
+        $conversation = $this->native->end($conversation);
+
+        return response()->json([
+            'ok' => true,
+            'status' => $conversation->status,
+            'ended_at' => $conversation->ended_at,
         ]);
     }
 
     private function row(Conversation $c): array
     {
         return [
-            ...$c->only(['id', 'kind', 'status', 'last_message', 'last_message_at', 'message_count', 'property_name']),
+            ...$c->only(['id', 'kind', 'provider', 'status', 'last_message', 'last_message_at', 'message_count', 'property_name']),
             'display_name' => $c->displayName(),
             'website' => $c->website?->only(['id', 'name']),
+            'can_reply' => $c->provider === 'native' && $c->status === 'open',
         ];
     }
 }

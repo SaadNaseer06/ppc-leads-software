@@ -56,7 +56,7 @@ export default function WebsiteShow(data: WebsiteDetail) {
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Leads in the last 30 days" value={formatNumber(leads30d)} />
         <Stat label="Last form lead" value={website.last_lead_at ? formatRelative(website.last_lead_at, now) : "Never"} />
-        <Stat label="Last Tawk.to chat" value={website.last_chat_at ? formatRelative(website.last_chat_at, now) : "Never"} />
+        <Stat label="Last live chat" value={website.last_chat_at ? formatRelative(website.last_chat_at, now) : "Never"} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-3">
@@ -64,8 +64,39 @@ export default function WebsiteShow(data: WebsiteDetail) {
           <section className="card">
             <div className="card-header">
               <h2 className="card-title flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-slate-400" />
+                Live chat widget
+              </h2>
+              {website.chat_enabled ? (
+                <span className="badge bg-emerald-50 text-emerald-700">Enabled</span>
+              ) : (
+                <span className="badge">Disabled</span>
+              )}
+              <CopyButton value={website.chat_snippet} label="Copy snippet" />
+            </div>
+            <div className="space-y-3 p-4 text-sm text-slate-600">
+              <p>
+                Paste this before <code className="rounded bg-slate-100 px-1">&lt;/body&gt;</code> on {website.domain} to
+                show the chat bubble. Visitors message your team; agents reply from the{" "}
+                <Link href="/chats" className="font-medium text-teal-700 hover:underline">
+                  Chats
+                </Link>{" "}
+                page. Requires Pusher keys in the server <code className="rounded bg-slate-100 px-1">.env</code> for
+                realtime (polling still works without them).
+              </p>
+              <Code value={website.chat_snippet} />
+              <p className="text-xs text-slate-500">
+                Toggle &quot;Enable live chat widget&quot; in settings if you need to pause the bubble without removing the
+                snippet.
+              </p>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="card-header">
+              <h2 className="card-title flex items-center gap-2">
                 <Code2 className="h-4 w-4 text-slate-400" />
-                Option 1 · Embed script (recommended)
+                Option 1 · Form embed script (recommended)
               </h2>
               <CopyButton value={snippet} label="Copy snippet" />
             </div>
@@ -118,19 +149,23 @@ export default function WebsiteShow(data: WebsiteDetail) {
             </div>
           </section>
 
-          <section className="card">
-            <div className="card-header">
+          <details className="card">
+            <summary className="card-header cursor-pointer list-none">
               <h2 className="card-title flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-slate-400" />
-                Tawk.to live chat
+                Legacy · Tawk.to (read-only history)
               </h2>
               {website.tawk_property_id ? (
                 <span className="badge bg-emerald-50 text-emerald-700">Linked</span>
               ) : (
                 <span className="badge">Not linked</span>
               )}
-            </div>
-            <div className="space-y-4 p-4 text-sm text-slate-600">
+            </summary>
+            <div className="space-y-4 border-t border-slate-100 p-4 text-sm text-slate-600">
+              <p className="text-xs text-slate-500">
+                New traffic should use the PPC Leads chat widget above. Keep Tawk linked only if you still need
+                historical chats or offline tickets.
+              </p>
               <ol className="list-decimal space-y-2 pl-5">
                 <li>
                   In Tawk.to open <strong>Administration → Settings → Webhooks</strong> and create a webhook.
@@ -147,9 +182,8 @@ export default function WebsiteShow(data: WebsiteDetail) {
                   <strong>New Ticket</strong>.
                 </li>
                 <li>
-                  Copy the webhook&apos;s <strong>secret key</strong> and the <strong>property ID</strong> (the first ID in your
-                  widget code: <code className="rounded bg-slate-100 px-1">embed.tawk.to/PROPERTY_ID/…</code>) into the
-                  settings below.
+                  Copy the webhook&apos;s <strong>secret key</strong> and the <strong>property ID</strong> into the settings
+                  below.
                 </li>
               </ol>
               {website.tawk_property_id ? (
@@ -157,7 +191,7 @@ export default function WebsiteShow(data: WebsiteDetail) {
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recent deliveries</p>
                   {events.length === 0 ? (
                     <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">
-                      Nothing received yet. Start a test chat on {website.domain} to check the connection.
+                      Nothing received yet from Tawk.to for this property.
                     </p>
                   ) : (
                     <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
@@ -178,7 +212,7 @@ export default function WebsiteShow(data: WebsiteDetail) {
                 </div>
               ) : null}
             </div>
-          </section>
+          </details>
         </div>
 
         <div className="space-y-5">
@@ -224,6 +258,7 @@ export default function WebsiteShow(data: WebsiteDetail) {
                   tawkPropertyId: website.tawk_property_id ?? "",
                   hasTawkSecret: website.has_tawk_secret,
                   active: website.active,
+                  chatEnabled: website.chat_enabled,
                 }}
               />
             </div>

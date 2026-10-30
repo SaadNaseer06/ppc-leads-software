@@ -59,10 +59,11 @@ class WebsiteController extends Controller
 
         return response()->json([
             'website' => [
-                ...$website->only(['id', 'name', 'domain', 'brand_id', 'active', 'public_key', 'tawk_property_id', 'last_lead_at', 'last_chat_at']),
+                ...$website->only(['id', 'name', 'domain', 'brand_id', 'active', 'chat_enabled', 'public_key', 'tawk_property_id', 'last_lead_at', 'last_chat_at']),
                 'brand' => $website->brand->only(['id', 'name']),
                 'has_tawk_secret' => (bool) $website->getRawOriginal('tawk_webhook_secret'),
                 'embed_snippet' => $website->embedSnippet(),
+                'chat_snippet' => $website->chatSnippet(),
                 'intake_url' => $website->intakeUrl(),
                 'tawk_webhook_url' => url('/api/webhooks/tawk'),
             ],
@@ -153,6 +154,7 @@ class WebsiteController extends Controller
             'tawk_property_id' => ['sometimes', 'nullable', 'string', 'max:64'],
             'tawk_webhook_secret' => ['sometimes', 'nullable', 'string', 'max:191'],
             'active' => ['sometimes', 'boolean'],
+            'chat_enabled' => ['sometimes', 'boolean'],
         ], ['brand_id.required' => 'Choose a brand']);
 
         if (isset($data['domain'])) {

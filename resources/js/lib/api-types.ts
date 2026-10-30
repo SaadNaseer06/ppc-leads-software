@@ -128,6 +128,7 @@ export type DashboardData = {
 export type ConversationRow = {
   id: number;
   kind: string;
+  provider: string;
   status: string;
   display_name: string;
   last_message: string | null;
@@ -135,6 +136,7 @@ export type ConversationRow = {
   message_count: number;
   property_name: string | null;
   website: Ref | null;
+  can_reply: boolean;
 };
 
 export type ChatsData = {
@@ -153,6 +155,7 @@ export type ChatsData = {
       })
     | null;
   unlinked: number;
+  pusher: { key: string | null; cluster: string } | null;
 };
 
 export type WebsiteListItem = {
@@ -181,6 +184,7 @@ export type WebsiteDetail = {
     domain: string;
     brand_id: number;
     active: boolean;
+    chat_enabled: boolean;
     public_key: string;
     tawk_property_id: string | null;
     last_lead_at: string | null;
@@ -188,6 +192,7 @@ export type WebsiteDetail = {
     brand: Ref;
     has_tawk_secret: boolean;
     embed_snippet: string;
+    chat_snippet: string;
     intake_url: string;
     tawk_webhook_url: string;
   };

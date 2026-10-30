@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\IntakeController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\NativeChatController;
 use App\Http\Controllers\Api\TawkWebhookController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebsiteController;
@@ -20,6 +21,15 @@ Route::post('/intake/{key}', [IntakeController::class, 'store'])->middleware('th
 Route::post('/webhooks/tawk', TawkWebhookController::class);
 // Dashboard sign-in: email + password -> API token
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
+
+// Native live chat widget (throttled; auth via visitor_token)
+Route::middleware('throttle:chat')->prefix('chat')->group(function () {
+    Route::post('/session', [NativeChatController::class, 'session']);
+    Route::post('/visitor', [NativeChatController::class, 'visitor']);
+    Route::post('/messages', [NativeChatController::class, 'storeMessage']);
+    Route::get('/messages', [NativeChatController::class, 'messages']);
+    Route::post('/auth', [NativeChatController::class, 'auth']);
+});
 
 // --- Signed-in dashboard users -------------------------------------------------
 
@@ -40,6 +50,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/leads/{id}/notes', [LeadController::class, 'addNote'])->whereNumber('id');
 
     Route::get('/chats', [ChatController::class, 'index']);
+    Route::post('/chats/{id}/messages', [ChatController::class, 'storeMessage'])->whereNumber('id');
+    Route::post('/chats/{id}/end', [ChatController::class, 'end'])->whereNumber('id');
 
     Route::get('/websites', [WebsiteController::class, 'index']);
     Route::post('/websites', [WebsiteController::class, 'store']);

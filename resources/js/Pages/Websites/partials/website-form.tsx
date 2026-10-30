@@ -14,6 +14,7 @@ export type WebsiteFormValues = {
   tawkPropertyId: string;
   hasTawkSecret: boolean;
   active: boolean;
+  chatEnabled: boolean;
 };
 
 export function WebsiteForm({
@@ -49,6 +50,7 @@ export function WebsiteForm({
         tawk_property_id: text("tawkPropertyId") || null,
         tawk_webhook_secret: text("tawkWebhookSecret") || null,
         active: form.get("active") === "on",
+        chat_enabled: form.get("chatEnabled") === "on",
       },
     });
     setSaving(false);
@@ -82,10 +84,20 @@ export function WebsiteForm({
         <p className="hint">Leads from this website are visible to everyone with access to this brand.</p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 sm:col-span-2">
-        <p className="text-sm font-medium text-slate-800">Tawk.to (optional)</p>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Link the Tawk.to property used on this website so chats and offline messages become leads.
+      <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+        <input type="checkbox" className="checkbox" name="chatEnabled" defaultChecked={initial?.chatEnabled ?? true} />
+        Enable live chat widget
+      </label>
+
+      <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+        <input type="checkbox" className="checkbox" name="active" defaultChecked={initial?.active ?? true} />
+        Accept new leads from this website
+      </label>
+
+      <details className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 sm:col-span-2">
+        <summary className="cursor-pointer text-sm font-medium text-slate-800">Legacy · Tawk.to (optional)</summary>
+        <p className="mt-1 text-xs text-slate-500">
+          Only needed for historical Tawk chats. New sites should use the PPC Leads chat widget instead.
         </p>
         <div className={`mt-3 grid gap-4 ${columns}`}>
           <div>
@@ -110,12 +122,7 @@ export function WebsiteForm({
             />
           </div>
         </div>
-      </div>
-
-      <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
-        <input type="checkbox" className="checkbox" name="active" defaultChecked={initial?.active ?? true} />
-        Accept new leads from this website
-      </label>
+      </details>
 
       {error ? <p className="text-sm text-red-600 sm:col-span-2">{error}</p> : null}
       <div className="flex justify-end gap-2 sm:col-span-2">
