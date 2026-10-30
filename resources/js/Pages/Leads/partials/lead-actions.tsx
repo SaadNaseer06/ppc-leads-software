@@ -109,7 +109,7 @@ export function LeadActions({
           onClick={async () => {
             const ok = await confirm({
               title: `Delete lead “${leadName ?? "this lead"}”?`,
-              description: "This cannot be undone.",
+              description: "The lead is moved to the deleted archive and removed from the live inbox. Chat history stays available.",
               confirmLabel: "Delete lead",
               tone: "danger",
             });

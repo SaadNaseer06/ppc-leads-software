@@ -12,6 +12,7 @@ use App\Models\LeadActivity;
 use App\Models\User;
 use App\Models\Website;
 use App\Services\LeadAssignment;
+use App\Services\LeadDeletion;
 use App\Services\LeadIntake;
 use App\Services\LeadQuery;
 use App\Services\TeamDirectory;
@@ -24,7 +25,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LeadController extends Controller
 {
-    public function __construct(private LeadQuery $leads, private LeadAssignment $assignment) {}
+    public function __construct(
+        private LeadQuery $leads,
+        private LeadAssignment $assignment,
+        private LeadDeletion $deletion,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -187,18 +192,9 @@ class LeadController extends Controller
         abort_unless($user->canDeleteLeads(), 403);
         $lead = Lead::query()->visibleTo($user)->findOrFail($id);
 
-        if ($lead->invoices()->exists()) {
-            return response()->json([
-                'error' => 'This lead has invoices. Remove or reassign those invoices before deleting the lead.',
-            ], 422);
-        }
-
         $name = $lead->name;
-        DB::transaction(function () use ($lead) {
-            // Conversations keep their history; lead_id is nullOnDelete
-            $lead->delete();
-        });
-        ActivityLog::record($user->id, 'lead.delete', 'Lead', $id, ['name' => $name]);
+        $this->deletion->deleteOne($lead, $user);
+        ActivityLog::record($user->id, 'lead.delete', 'Lead', $id, ['name' => $name, 'archived' => true]);
 
         return response()->json(['ok' => true]);
     }
@@ -208,7 +204,7 @@ class LeadController extends Controller
         $user = $request->user();
         abort_unless($user->canWorkLeads(), 403);
         $data = $request->validate([
-            'action' => ['required', Rule::in(['assign', 'status'])],
+            'action' => ['required', Rule::in(['assign', 'status', 'delete'])],
             'ids' => ['required', 'array', 'min:1', 'max:500'],
             'ids.*' => ['integer'],
             'assignee_id' => ['nullable', 'integer'],
@@ -225,6 +221,18 @@ class LeadController extends Controller
             abort_unless($user->canAssignLeads(), 403);
 
             return response()->json(['updated' => $this->assignment->assign($ids, $data['assignee_id'] ?? null, $user->id, 'bulk')]);
+        }
+
+        if ($data['action'] === 'delete') {
+            abort_unless($user->canDeleteLeads(), 403);
+            $result = $this->deletion->deleteMany($ids, $user);
+            ActivityLog::record($user->id, 'lead.bulk_delete', 'Lead', null, $result);
+
+            return response()->json([
+                'updated' => $result['deleted'],
+                'deleted' => $result['deleted'],
+                'skipped_invoices' => $result['skipped_invoices'],
+            ]);
         }
 
         return response()->json(['updated' => $this->assignment->bulkStatus($ids, LeadStatus::from($data['status']), $user->id)]);

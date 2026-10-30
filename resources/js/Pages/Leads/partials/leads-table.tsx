@@ -1,11 +1,12 @@
 import { useState, useTransition } from "react";
 import { Link, router } from "@inertiajs/react";
-import { Inbox, Loader2, Repeat2, UserPlus, X } from "lucide-react";
+import { Inbox, Loader2, Repeat2, Trash2, UserPlus, X } from "lucide-react";
 import { LeadStatus, STATUS_LABELS } from "@/lib/roles";
 import type { Assignee } from "@/lib/api-types";
 import { ChannelBadge, SourceBadge, StatusBadge } from "@/components/ui/badges";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/page-header";
+import { useConfirm } from "@/components/ui/confirm";
 import { apiRequest, useToast } from "@/components/ui/toast";
 import { useLiveSync } from "@/components/app-shell/live-provider";
 
@@ -32,6 +33,7 @@ export function LeadsTable({
   assignees,
   canAssign,
   canChangeStatus,
+  canDelete,
   canManageWebsites,
   emptyFiltered,
 }: {
@@ -39,10 +41,12 @@ export function LeadsTable({
   assignees: Assignee[];
   canAssign: boolean;
   canChangeStatus: boolean;
+  canDelete?: boolean;
   canManageWebsites: boolean;
   emptyFiltered: boolean;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const syncLive = useLiveSync();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [assignTo, setAssignTo] = useState("");
@@ -50,7 +54,7 @@ export function LeadsTable({
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
 
-  const selectable = canAssign || canChangeStatus;
+  const selectable = canAssign || canChangeStatus || Boolean(canDelete);
   // Drop selections that are no longer on this page (after paging or filtering)
   const visibleSelected = new Set(rows.filter((r) => selected.has(r.id)).map((r) => r.id));
   const allSelected = rows.length > 0 && visibleSelected.size === rows.length;
@@ -65,9 +69,12 @@ export function LeadsTable({
     setSelected(next);
   }
 
-  async function runBulk(body: Record<string, unknown>, success: (n: number) => string) {
+  async function runBulk(
+    body: Record<string, unknown>,
+    success: (data: { updated: number; skipped_invoices?: number }) => string
+  ) {
     setBusy(true);
-    const res = await apiRequest<{ updated: number }>("/api/leads/bulk", {
+    const res = await apiRequest<{ updated: number; deleted?: number; skipped_invoices?: number }>("/api/leads/bulk", {
       method: "POST",
       body: { ...body, ids: [...visibleSelected] },
     });
@@ -76,12 +83,51 @@ export function LeadsTable({
       toast.error(res.error);
       return;
     }
-    toast.success(success(res.data.updated));
+    toast.success(success(res.data));
     setSelected(new Set());
     setAssignTo("");
     setStatus("");
     syncLive();
     startTransition(() => router.reload());
+  }
+
+  async function deleteOne(lead: LeadRowView) {
+    const ok = await confirm({
+      title: `Delete lead “${lead.name}”?`,
+      description: "The lead is moved to the deleted archive and removed from the live inbox.",
+      confirmLabel: "Delete lead",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setBusy(true);
+    const res = await apiRequest(`/api/leads/${lead.id}`, { method: "DELETE" });
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Lead deleted");
+    syncLive();
+    startTransition(() => router.reload());
+  }
+
+  async function bulkDelete() {
+    const n = visibleSelected.size;
+    const ok = await confirm({
+      title: `Delete ${n} selected lead${n === 1 ? "" : "s"}?`,
+      description:
+        "Selected leads are moved to the deleted archive. Leads with invoices are skipped and stay in the inbox.",
+      confirmLabel: n === 1 ? "Delete lead" : "Delete leads",
+      tone: "danger",
+    });
+    if (!ok) return;
+    await runBulk({ action: "delete" }, (data) => {
+      const deleted = data.deleted ?? data.updated;
+      const skipped = data.skipped_invoices ?? 0;
+      if (!deleted && skipped) return `No leads deleted — ${skipped} have invoices`;
+      if (skipped) return `${deleted} deleted · ${skipped} skipped (have invoices)`;
+      return `${deleted} lead${deleted === 1 ? "" : "s"} deleted`;
+    });
   }
 
   if (rows.length === 0) {
@@ -142,7 +188,10 @@ export function LeadsTable({
                 onClick={() =>
                   runBulk(
                     { action: "assign", assignee_id: assignTo === "__none__" ? null : Number(assignTo) },
-                    (n) => (n ? `${n} lead${n === 1 ? "" : "s"} reassigned` : "Already assigned to that person")
+                    (data) =>
+                      data.updated
+                        ? `${data.updated} lead${data.updated === 1 ? "" : "s"} reassigned`
+                        : "Already assigned to that person"
                   )
                 }
               >
@@ -171,12 +220,18 @@ export function LeadsTable({
                 className="btn-secondary btn-sm"
                 disabled={!status || busy}
                 onClick={() =>
-                  runBulk({ action: "status", status }, (n) => `${n} lead${n === 1 ? "" : "s"} updated`)
+                  runBulk({ action: "status", status }, (data) => `${data.updated} lead${data.updated === 1 ? "" : "s"} updated`)
                 }
               >
                 Apply
               </button>
             </div>
+          ) : null}
+          {canDelete ? (
+            <button type="button" className="btn-danger btn-sm" disabled={busy} onClick={() => void bulkDelete()}>
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete selected
+            </button>
           ) : null}
           <button type="button" className="btn-ghost btn-sm ml-auto" onClick={() => setSelected(new Set())}>
             <X className="h-3.5 w-3.5" />
@@ -207,6 +262,7 @@ export function LeadsTable({
               <th>Status</th>
               <th>Assignee</th>
               <th className="text-right">Received</th>
+              {canDelete ? <th className="w-12"><span className="sr-only">Actions</span></th> : null}
             </tr>
           </thead>
           <tbody>
@@ -274,6 +330,22 @@ export function LeadsTable({
                 <td className="whitespace-nowrap text-right text-slate-500" title={lead.receivedFull}>
                   {lead.received}
                 </td>
+                {canDelete ? (
+                  <td className="text-right">
+                    <button
+                      type="button"
+                      className="btn-ghost btn-sm text-red-600 hover:text-red-700"
+                      title="Delete lead"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void deleteOne(lead);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

@@ -293,7 +293,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     if (!selected?.lead || deleting) return;
     const ok = await confirm({
       title: `Delete lead “${selected.lead.name}”?`,
-      description: "This cannot be undone. The chat transcript stays as history.",
+      description: "The lead is moved to the deleted archive. The chat transcript stays as history.",
       confirmLabel: "Delete lead",
       tone: "danger",
     });

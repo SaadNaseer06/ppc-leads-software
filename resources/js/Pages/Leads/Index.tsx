@@ -119,6 +119,7 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
         assignees={lookups.assignees}
         canAssign={canAssign}
         canChangeStatus={user.can.work_leads}
+        canDelete={user.can.delete_leads}
         canManageWebsites={user.can.manage_websites}
         emptyFiltered={Object.values(filters).some(Boolean)}
       />
