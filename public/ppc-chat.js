@@ -33,6 +33,7 @@
   var greeting = script.getAttribute("data-greeting") || "Welcome — send a message and a specialist will reply shortly.";
   var agentFallback = script.getAttribute("data-agent") || "Support specialist";
   var STORAGE_KEY = "ppc_chat_token_" + siteKey;
+  var CONTACT_SKIP_KEY = "ppc_chat_contact_skip_" + siteKey;
 
   var state = {
     open: false,
@@ -48,6 +49,9 @@
     unread: 0,
     agentName: null,
     agentOnline: false,
+    visitorName: null,
+    visitorEmail: null,
+    contactDone: false,
   };
 
   function api(path, opts) {
@@ -174,8 +178,13 @@
       accent +
       ";color:#fff;padding:0 16px;font-size:14px;font-weight:650;cursor:pointer}" +
       "#ppc-chat-form button:disabled{opacity:.55;cursor:default}" +
-      "#ppc-chat-prechat{padding:14px;border-top:1px solid #e2e8f0;background:#fff;display:grid;gap:8px}" +
-      "#ppc-chat-prechat p{margin:0 0 2px;font-size:13px;color:#64748b}" +
+      "#ppc-chat-prechat{display:none;flex-direction:column;gap:10px;padding:18px 16px;border-top:1px solid #e2e8f0;background:#fff}" +
+      "#ppc-chat-prechat.show{display:flex}" +
+      "#ppc-chat-prechat h3{margin:0;font-size:15px;font-weight:650;color:#0f172a}" +
+      "#ppc-chat-prechat p{margin:0;font-size:13px;line-height:1.45;color:#64748b}" +
+      "#ppc-chat-prechat .ppc-prechat-actions{display:flex;gap:8px;margin-top:4px}" +
+      "#ppc-chat-prechat .ppc-prechat-actions button{flex:1;height:42px}" +
+      "#ppc-chat-prechat .ppc-skip{background:#fff;color:#475569;border:1px solid #e2e8f0}" +
       "#ppc-chat-ended{padding:14px;text-align:center;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0;background:#fff}" +
       "#ppc-chat-toast{position:absolute;right:0;bottom:76px;width:min(300px,calc(100vw - 28px));background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.22);padding:12px 14px;display:none;gap:10px;align-items:flex-start;cursor:pointer;animation:ppc-fade-up .3s ease}" +
       "#ppc-chat-toast.show{display:flex}" +
@@ -321,13 +330,50 @@
     updateHeader();
   }
 
-  function setComposerVisible() {
+  function contactSkipped() {
+    try {
+      return localStorage.getItem(CONTACT_SKIP_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function markContactDone(skip) {
+    state.contactDone = true;
+    if (skip) {
+      try {
+        localStorage.setItem(CONTACT_SKIP_KEY, "1");
+      } catch (e) {}
+    }
+    syncContactStep();
+  }
+
+  /** Show name/email only for a brand-new chat; hide once chatting or details exist. */
+  function needsContactStep() {
+    if (state.contactDone || contactSkipped()) return false;
+    if (state.visitorName || state.visitorEmail) return false;
+    if (state.messages.length > 0) return false;
+    if (state.status !== "open") return false;
+    return true;
+  }
+
+  function syncContactStep() {
+    var pre = document.getElementById("ppc-chat-prechat");
     var form = document.getElementById("ppc-chat-form");
     var ended = document.getElementById("ppc-chat-ended");
-    var open = state.status === "open";
-    if (form) form.style.display = open ? "flex" : "none";
-    if (ended) ended.style.display = open ? "none" : "block";
+    var showPre = needsContactStep();
+    if (pre) {
+      if (showPre) pre.classList.add("show");
+      else pre.classList.remove("show");
+    }
+    var chatOpen = state.status === "open";
+    if (form) form.style.display = chatOpen && !showPre ? "flex" : "none";
+    if (ended) ended.style.display = chatOpen ? "none" : "block";
     updateHeader();
+  }
+
+  function setComposerVisible() {
+    syncContactStep();
   }
 
   function upsertMessage(m, opts) {
@@ -439,6 +485,11 @@
       state.conversationId = data.conversation_id;
       state.status = data.status || "open";
       state.messages = data.messages || [];
+      state.visitorName = data.visitor_name || null;
+      state.visitorEmail = data.visitor_email || null;
+      if (state.visitorName || state.visitorEmail || state.messages.length > 0) {
+        state.contactDone = true;
+      }
       if (lastAgent()) {
         state.agentName = lastAgent().sender_name || state.agentName;
         state.agentOnline = true;
@@ -483,17 +534,24 @@
     updateBadge();
     if (toast) toast.classList.remove("show");
     if (panel) panel.classList.add("open");
-    ensureSession().catch(function (e) {
-      alert(e.message || "Chat is unavailable");
-    });
-    setTimeout(function () {
-      var pre = document.getElementById("ppc-chat-prechat");
-      if (pre && state.messages.length === 0) pre.style.display = "grid";
-    }, 350);
-    var input = document.getElementById("ppc-chat-input");
-    if (input) setTimeout(function () {
-      input.focus();
-    }, 200);
+    ensureSession()
+      .then(function () {
+        syncContactStep();
+        if (!needsContactStep()) {
+          var input = document.getElementById("ppc-chat-input");
+          if (input) setTimeout(function () {
+            input.focus();
+          }, 120);
+        } else {
+          var nameInput = document.getElementById("ppc-chat-name");
+          if (nameInput) setTimeout(function () {
+            nameInput.focus();
+          }, 120);
+        }
+      })
+      .catch(function (e) {
+        alert(e.message || "Chat is unavailable");
+      });
   }
 
   function closePanel() {
@@ -546,28 +604,52 @@
         "form",
         {
           id: "ppc-chat-prechat",
-          style: "display:none",
           onSubmit: function (e) {
             e.preventDefault();
             var name = document.getElementById("ppc-chat-name").value.trim();
             var email = document.getElementById("ppc-chat-email").value.trim();
             ensureSession()
               .then(function () {
+                if (!name && !email) {
+                  markContactDone(true);
+                  return null;
+                }
                 return api("/api/chat/visitor", {
                   method: "POST",
                   body: { visitor_token: state.visitorToken, name: name || null, email: email || null },
+                }).then(function () {
+                  state.visitorName = name || state.visitorName;
+                  state.visitorEmail = email || state.visitorEmail;
+                  markContactDone(false);
                 });
               })
               .then(function () {
-                document.getElementById("ppc-chat-prechat").style.display = "none";
+                var input = document.getElementById("ppc-chat-input");
+                if (input) input.focus();
+              })
+              .catch(function (err) {
+                alert(err.message || "Could not save your details");
               });
           },
         },
         [
-          el("p", { text: "Optional — share your details so we can follow up:" }),
+          el("h3", { text: "Before we begin" }),
+          el("p", { text: "Share your name and email so our team can follow up. You can also skip and chat right away." }),
           el("input", { id: "ppc-chat-name", type: "text", placeholder: "Your name", autocomplete: "name" }),
           el("input", { id: "ppc-chat-email", type: "email", placeholder: "Email", autocomplete: "email" }),
-          el("button", { type: "submit", text: "Continue" }),
+          el("div", { class: "ppc-prechat-actions" }, [
+            el("button", {
+              type: "button",
+              class: "ppc-skip",
+              text: "Skip for now",
+              onClick: function () {
+                markContactDone(true);
+                var input = document.getElementById("ppc-chat-input");
+                if (input) input.focus();
+              },
+            }),
+            el("button", { type: "submit", text: "Continue" }),
+          ]),
         ]
       ),
       el(
@@ -580,6 +662,7 @@
             var body = (input.value || "").trim();
             if (!body) return;
             input.value = "";
+            markContactDone(true);
             sendMessage(body);
           },
         },
