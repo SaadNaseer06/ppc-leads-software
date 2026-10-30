@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Services\NativeChatService;
+use App\Services\TeamDirectory;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,10 @@ class ChatController extends Controller
 {
     private const PAGE = 30;
 
-    public function __construct(private NativeChatService $native) {}
+    public function __construct(
+        private NativeChatService $native,
+        private TeamDirectory $team,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -43,18 +47,24 @@ class ChatController extends Controller
                 ->find($selectedId)
             : null;
 
+        $assignees = ($user->canAssignLeads() && $selected?->brand_id)
+            ? $this->team->assignable($user, $selected->brand_id)
+            : [];
+
         return response()->json([
             'conversations' => $rows->map(fn (Conversation $c) => $this->row($c)),
             'has_more' => $hasMore,
             'selected' => $selected ? [
                 ...$this->row($selected),
-                ...$selected->only(['visitor_email', 'city', 'country', 'subject', 'started_at', 'website_id']),
+                ...$selected->only(['visitor_email', 'city', 'country', 'subject', 'started_at', 'website_id', 'brand_id']),
                 'messages' => $selected->messages->map->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
                 'lead' => $selected->lead ? [
-                    ...$selected->lead->only(['id', 'name', 'status']),
+                    ...$selected->lead->only(['id', 'name', 'status', 'assignee_id']),
                     'assignee' => $selected->lead->assignee?->name,
+                    'assignee_id' => $selected->lead->assignee_id,
                 ] : null,
             ] : null,
+            'assignees' => $assignees,
             'unlinked' => $user->hasGlobalAccess() ? Conversation::whereNull('website_id')->count() : 0,
             'pusher' => [
                 'key' => config('broadcasting.connections.pusher.key'),

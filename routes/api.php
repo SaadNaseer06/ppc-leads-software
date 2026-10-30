@@ -47,6 +47,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/leads/export', [LeadController::class, 'export']);
     Route::get('/leads/{id}', [LeadController::class, 'show'])->whereNumber('id');
     Route::patch('/leads/{id}', [LeadController::class, 'update'])->whereNumber('id');
+    Route::delete('/leads/{id}', [LeadController::class, 'destroy'])->whereNumber('id');
     Route::post('/leads/{id}/notes', [LeadController::class, 'addNote'])->whereNumber('id');
 
     Route::get('/chats', [ChatController::class, 'index']);

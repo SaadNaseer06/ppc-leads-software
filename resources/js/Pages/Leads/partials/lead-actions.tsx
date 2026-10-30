@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { router } from "@inertiajs/react";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { LeadStatus, STATUS_LABELS } from "@/lib/roles";
 import type { Assignee } from "@/lib/api-types";
 import { Modal } from "@/components/ui/modal";
@@ -9,20 +9,25 @@ import { useLiveSync } from "@/components/app-shell/live-provider";
 
 export function LeadActions({
   leadId,
+  leadName,
   status,
   assigneeId,
   assignees,
   canAssign,
+  canDelete,
 }: {
   leadId: number;
+  leadName?: string;
   status: string;
   assigneeId: number | null;
   assignees: Assignee[];
   canAssign: boolean;
+  canDelete?: boolean;
 }) {
   const toast = useToast();
   const syncLive = useLiveSync();
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
   const [handoffUserId, setHandoffUserId] = useState("");
   const upSales = assignees.filter((a) => a.role === "UP_SALES");
@@ -90,6 +95,30 @@ export function LeadActions({
             ))}
           </select>
         </div>
+      ) : null}
+
+      {canDelete ? (
+        <button
+          type="button"
+          className="btn-ghost text-red-600 hover:text-red-700"
+          disabled={deleting || saving}
+          onClick={async () => {
+            if (!confirm(`Delete lead “${leadName ?? "this lead"}”? This cannot be undone.`)) return;
+            setDeleting(true);
+            const res = await apiRequest(`/api/leads/${leadId}`, { method: "DELETE" });
+            setDeleting(false);
+            if (!res.ok) {
+              toast.error(res.error);
+              return;
+            }
+            toast.success("Lead deleted");
+            syncLive();
+            router.visit("/leads");
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          {deleting ? "Deleting…" : "Delete lead"}
+        </button>
       ) : null}
 
       <Modal

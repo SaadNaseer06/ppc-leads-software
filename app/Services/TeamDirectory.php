@@ -61,6 +61,7 @@ class TeamDirectory
                 'assign_leads' => $user->canAssignLeads(),
                 'create_leads' => $user->canCreateLeads(),
                 'work_leads' => $user->canWorkLeads(),
+                'delete_leads' => $user->canDeleteLeads(),
                 'view_chats' => $user->canViewChats(),
                 'view_invoices' => $user->canViewInvoices(),
                 'create_invoice' => $user->canCreateInvoice(),

@@ -48,10 +48,12 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
           {canWork ? (
             <LeadActions
               leadId={lead.id}
+              leadName={lead.name}
               status={lead.status}
               assigneeId={lead.assignee?.id ?? null}
               assignees={assignees}
               canAssign={user.can.assign_leads}
+              canDelete={user.can.delete_leads}
             />
           ) : null}
         </div>

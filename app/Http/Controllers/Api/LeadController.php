@@ -181,6 +181,28 @@ class LeadController extends Controller
         return response()->json(['id' => $note->id], 201);
     }
 
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canDeleteLeads(), 403);
+        $lead = Lead::query()->visibleTo($user)->findOrFail($id);
+
+        if ($lead->invoices()->exists()) {
+            return response()->json([
+                'error' => 'This lead has invoices. Remove or reassign those invoices before deleting the lead.',
+            ], 422);
+        }
+
+        $name = $lead->name;
+        DB::transaction(function () use ($lead) {
+            // Conversations keep their history; lead_id is nullOnDelete
+            $lead->delete();
+        });
+        ActivityLog::record($user->id, 'lead.delete', 'Lead', $id, ['name' => $name]);
+
+        return response()->json(['ok' => true]);
+    }
+
     public function bulk(Request $request): JsonResponse
     {
         $user = $request->user();

@@ -150,10 +150,18 @@ export type ChatsData = {
         subject: string | null;
         started_at: string;
         website_id: number | null;
+        brand_id: number | null;
         messages: ChatMessage[];
-        lead: { id: number; name: string; status: string; assignee: string | null } | null;
+        lead: {
+          id: number;
+          name: string;
+          status: string;
+          assignee: string | null;
+          assignee_id: number | null;
+        } | null;
       })
     | null;
+  assignees: Assignee[];
   unlinked: number;
   pusher: { key: string | null; cluster: string } | null;
 };

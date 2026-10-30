@@ -1,12 +1,14 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { Head, Link, router } from "@inertiajs/react";
-import { ArrowLeft, ExternalLink, MessageSquare, MessageSquareOff, TriangleAlert } from "lucide-react";
-import type { ChatMessage, ChatsData } from "@/lib/api-types";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Head, Link, usePage } from "@inertiajs/react";
+import { ArrowLeft, ExternalLink, MessageSquare, MessageSquareOff, Trash2, TriangleAlert } from "lucide-react";
+import type { Assignee, ChatMessage, ChatsData, ConversationRow } from "@/lib/api-types";
+import type { SharedProps } from "@/types";
 import { formatDateTime, formatRelative, formatTime } from "@/lib/format";
 import { PageHeader, EmptyState } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/badges";
 import { Avatar } from "@/components/ui/avatar";
-import { apiRequest, useToast } from "@/components/ui/toast";
+import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
+import { useLiveSync } from "@/components/app-shell/live-provider";
 import { getEcho } from "@/lib/echo";
 
 const FILTERS = [
@@ -15,33 +17,108 @@ const FILTERS = [
   { key: "ticket", label: "Offline messages" },
 ] as const;
 
-export default function Chats({ chats: data, query: params }: { chats: ChatsData; query: Record<string, string | undefined> }) {
+const POLL_MS = 3000;
+
+type SelectedChat = NonNullable<ChatsData["selected"]>;
+
+export default function Chats({ chats: initial, query: params }: { chats: ChatsData; query: Record<string, string | undefined> }) {
+  const user = usePage<SharedProps>().props.auth.user!;
   const kind = params.kind === "chat" || params.kind === "ticket" ? params.kind : undefined;
-  const list = data.conversations;
-  const hasMore = data.has_more;
-  const selected = data.selected;
-  const unlinked = data.unlinked;
   const toast = useToast();
-  const [messages, setMessages] = useState<ChatMessage[]>(selected?.messages ?? []);
+  const syncLive = useLiveSync();
+
+  const [list, setList] = useState<ConversationRow[]>(initial.conversations);
+  const [hasMore, setHasMore] = useState(initial.has_more);
+  const [selected, setSelected] = useState<SelectedChat | null>(initial.selected);
+  const [assignees, setAssignees] = useState<Assignee[]>(initial.assignees ?? []);
+  const [unlinked, setUnlinked] = useState(initial.unlinked);
+  const [pusher, setPusher] = useState(initial.pusher);
+  const [messages, setMessages] = useState<ChatMessage[]>(initial.selected?.messages ?? []);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const now = new Date();
+  const selectedIdRef = useRef<number | null>(initial.selected?.id ?? null);
+  const [now, setNow] = useState(() => new Date());
+
+  selectedIdRef.current = selected?.id ?? null;
+
+  const applyPayload = useCallback((data: ChatsData, opts?: { replaceMessages?: boolean }) => {
+    setList(data.conversations);
+    setHasMore(data.has_more);
+    setUnlinked(data.unlinked);
+    setAssignees(data.assignees ?? []);
+    if (data.pusher) setPusher(data.pusher);
+
+    const next = data.selected;
+    setSelected(next);
+    if (!next) {
+      setMessages([]);
+      return;
+    }
+    setMessages((prev) => {
+      if (opts?.replaceMessages) return next.messages;
+      const overlap = prev.some((m) => next.messages.some((n) => n.id === m.id));
+      if (!overlap) return next.messages;
+      const byId = new Map<number, ChatMessage>();
+      for (const m of prev) byId.set(m.id, m);
+      for (const m of next.messages) byId.set(m.id, m);
+      return [...byId.values()].sort((a, b) => a.id - b.id);
+    });
+  }, []);
+
+  // Inertia navigation (filter / select another chat) replaces the page props
+  useEffect(() => {
+    applyPayload(initial, { replaceMessages: true });
+    setDraft("");
+  }, [initial, applyPayload]);
+
+  const fetchChats = useCallback(async () => {
+    if (document.visibilityState !== "visible") return;
+    const q = new URLSearchParams();
+    if (kind) q.set("kind", kind);
+    if (params.id) q.set("id", params.id);
+    if (params.before) q.set("before", params.before);
+    try {
+      const res = await fetch(`/api/chats?${q}`, {
+        headers: { ...apiHeaders(false), Accept: "application/json" },
+        credentials: "same-origin",
+      });
+      if (res.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!res.ok) return;
+      const data = (await res.json()) as ChatsData;
+      applyPayload(data);
+      setNow(new Date());
+    } catch {
+      // keep last good snapshot
+    }
+  }, [kind, params.id, params.before, applyPayload]);
 
   useEffect(() => {
-    setMessages(selected?.messages ?? []);
-    setDraft("");
-  }, [selected?.id, selected?.messages]);
+    const timer = setInterval(() => void fetchChats(), POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchChats();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [fetchChats]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // Instant message append via Pusher when configured
   useEffect(() => {
-    if (!selected?.id || !data.pusher?.key) return;
-
-    const echo = getEcho(data.pusher.key, data.pusher.cluster);
+    if (!selected?.id || !pusher?.key) return;
+    const echo = getEcho(pusher.key, pusher.cluster);
     if (!echo) return;
 
     const channelName = `chat.${selected.id}`;
@@ -49,6 +126,7 @@ export default function Chats({ chats: data, query: params }: { chats: ChatsData
     const handler = (payload: { message?: ChatMessage }) => {
       if (!payload?.message) return;
       setMessages((prev) => (prev.some((m) => m.id === payload.message!.id) ? prev : [...prev, payload.message!]));
+      void fetchChats();
     };
     channel.listen(".ChatMessageSent", handler);
 
@@ -56,7 +134,25 @@ export default function Chats({ chats: data, query: params }: { chats: ChatsData
       channel.stopListening(".ChatMessageSent", handler);
       echo.leave(channelName);
     };
-  }, [selected?.id, data.pusher?.key, data.pusher?.cluster]);
+  }, [selected?.id, pusher?.key, pusher?.cluster, fetchChats]);
+
+  // Brand inbox channel: refresh list when any chat on the user's brands gets a message
+  useEffect(() => {
+    if (!pusher?.key || user.brand_ids.length === 0) return;
+    const echo = getEcho(pusher.key, pusher.cluster);
+    if (!echo) return;
+
+    const brandIds = user.brand_ids;
+    const handler = () => void fetchChats();
+    for (const brandId of brandIds) {
+      echo.private(`chats.${brandId}`).listen(".ChatMessageSent", handler);
+    }
+    return () => {
+      for (const brandId of brandIds) {
+        echo.leave(`chats.${brandId}`);
+      }
+    };
+  }, [pusher?.key, pusher?.cluster, user.brand_ids, fetchChats]);
 
   const query = (extra: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -79,6 +175,7 @@ export default function Chats({ chats: data, query: params }: { chats: ChatsData
     }
     setMessages((prev) => (prev.some((m) => m.id === res.data.message.id) ? prev : [...prev, res.data.message]));
     setDraft("");
+    void fetchChats();
   }
 
   async function endChat() {
@@ -92,12 +189,46 @@ export default function Chats({ chats: data, query: params }: { chats: ChatsData
       return;
     }
     toast.success("Chat ended");
-    router.reload();
+    void fetchChats();
+  }
+
+  async function assignLead(assigneeId: number | null) {
+    if (!selected?.lead || assigning) return;
+    setAssigning(true);
+    const name = assignees.find((a) => a.id === assigneeId)?.name;
+    const res = await apiRequest(`/api/leads/${selected.lead.id}`, {
+      method: "PATCH",
+      body: { assignee_id: assigneeId },
+    });
+    setAssigning(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(assigneeId ? `Assigned to ${name}` : "Lead unassigned");
+    syncLive();
+    void fetchChats();
+  }
+
+  async function deleteLead() {
+    if (!selected?.lead || deleting) return;
+    if (!confirm(`Delete lead “${selected.lead.name}”? This cannot be undone. The chat transcript stays as history.`)) return;
+    setDeleting(true);
+    const res = await apiRequest(`/api/leads/${selected.lead.id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Lead deleted");
+    syncLive();
+    void fetchChats();
   }
 
   const canReply = Boolean(selected?.can_reply);
   const isNative = selected?.provider === "native";
-  const isTawk = selected?.provider === "tawk" || (!selected?.provider && selected);
+  const canAssign = user.can.assign_leads && Boolean(selected?.lead);
+  const canDelete = user.can.delete_leads && Boolean(selected?.lead);
 
   return (
     <div className="space-y-5">
@@ -212,10 +343,16 @@ export default function Chats({ chats: data, query: params }: { chats: ChatsData
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {isNative && selected.status === "open" ? (
                       <button type="button" className="btn-ghost btn-sm" onClick={endChat} disabled={ending}>
                         {ending ? "Ending…" : "End chat"}
+                      </button>
+                    ) : null}
+                    {canDelete ? (
+                      <button type="button" className="btn-ghost btn-sm text-red-600 hover:text-red-700" onClick={deleteLead} disabled={deleting}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {deleting ? "Deleting…" : "Delete lead"}
                       </button>
                     ) : null}
                     {selected.lead ? (
@@ -228,15 +365,37 @@ export default function Chats({ chats: data, query: params }: { chats: ChatsData
                 </div>
 
                 {selected.lead ? (
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-slate-50/70 px-5 py-2 text-xs text-slate-600">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-100 bg-slate-50/70 px-5 py-2 text-xs text-slate-600">
                     <span>
                       Lead: <span className="font-medium text-slate-800">{selected.lead.name}</span>
                     </span>
                     <StatusBadge status={selected.lead.status} />
-                    <span>
-                      Assigned to{" "}
-                      <span className="font-medium text-slate-800">{selected.lead.assignee ?? "nobody yet"}</span>
-                    </span>
+                    {canAssign ? (
+                      <label className="flex items-center gap-2">
+                        <span className="text-slate-500">Assign</span>
+                        <select
+                          className="input h-8 min-w-[200px] py-1 text-xs"
+                          value={selected.lead.assignee_id ?? ""}
+                          disabled={assigning}
+                          onChange={(e) => void assignLead(e.target.value ? Number(e.target.value) : null)}
+                        >
+                          <option value="">Unassigned</option>
+                          {selected.lead.assignee_id && !assignees.some((a) => a.id === selected.lead!.assignee_id) ? (
+                            <option value={selected.lead.assignee_id}>{selected.lead.assignee ?? "Current assignee"}</option>
+                          ) : null}
+                          {assignees.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name} · {a.role_label} · {a.open_leads.toLocaleString("en-US")} open
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <span>
+                        Assigned to{" "}
+                        <span className="font-medium text-slate-800">{selected.lead.assignee ?? "nobody yet"}</span>
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <div className="border-b border-slate-100 bg-amber-50/60 px-5 py-2 text-xs text-amber-900">
@@ -246,7 +405,7 @@ export default function Chats({ chats: data, query: params }: { chats: ChatsData
                   </div>
                 )}
 
-                {isTawk && selected.provider === "tawk" ? (
+                {selected.provider === "tawk" ? (
                   <div className="border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs text-slate-600">
                     Read-only Tawk.to history. New chats use the PPC Leads widget — reply here for those.
                   </div>

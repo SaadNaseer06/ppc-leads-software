@@ -4,6 +4,7 @@ export type Permission =
   | "assign_leads"
   | "create_leads"
   | "work_leads"
+  | "delete_leads"
   | "view_chats"
   | "view_invoices"
   | "create_invoice"

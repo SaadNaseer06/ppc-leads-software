@@ -94,6 +94,12 @@ class User extends Authenticatable
         return $this->hasGlobalAccess() || $this->role === Role::Admin;
     }
 
+    /** Permanently remove a lead (Super Admin / Admin only) */
+    public function canDeleteLeads(): bool
+    {
+        return $this->canAssignLeads();
+    }
+
     public function canCreateLeads(): bool
     {
         return $this->canAssignLeads() || $this->isSales();
