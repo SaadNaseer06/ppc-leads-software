@@ -135,6 +135,12 @@ class User extends Authenticatable
         return $this->canCreateInvoice() || in_array($this->role, [Role::Finance, Role::Admin], true);
     }
 
+    /** Record payments and mark invoices paid or cancelled (Admins only on their brands' invoices) */
+    public function canManageInvoices(): bool
+    {
+        return $this->hasGlobalAccess() || in_array($this->role, [Role::Finance, Role::Admin], true);
+    }
+
     public function canAccessBrand(int $brandId): bool
     {
         return $this->hasGlobalAccess() || in_array($brandId, $this->brandIds(), true);

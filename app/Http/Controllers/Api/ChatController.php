@@ -25,7 +25,7 @@ class ChatController extends Controller
         abort_unless($user->canViewChats(), 403);
 
         $kind = in_array($request->query('kind'), ['chat', 'ticket'], true) ? $request->query('kind') : null;
-        $query = Conversation::query()->visibleTo($user)->with(['website:id,name', 'lead:id,name,assignee_id']);
+        $query = Conversation::query()->visibleTo($user)->started()->with(['website:id,name', 'lead:id,name,assignee_id']);
         if ($kind) {
             $query->where('kind', $kind);
         }
@@ -42,16 +42,17 @@ class ChatController extends Controller
 
         $selectedId = $request->query('id') ?? $rows->first()?->id;
         $selected = $selectedId
-            ? Conversation::query()->visibleTo($user)
-                ->with(['messages' => fn ($q) => $q->orderBy('sent_at')->limit(500), 'website:id,name,domain', 'lead.assignee:id,name'])
-                ->find($selectedId)
+            ? Conversation::query()->visibleTo($user)->with(['website:id,name,domain', 'lead.assignee:id,name'])->find($selectedId)
             : null;
+        // The newest 500 messages, oldest first
+        $selected?->setRelation('messages', $selected->messages()
+            ->orderByDesc('sent_at')->orderByDesc('id')->limit(500)->get()->reverse()->values());
 
         $assignees = ($user->canAssignLeads() && $selected?->brand_id)
             ? $this->team->assignable($user, $selected->brand_id)
             : [];
 
-        $openCount = Conversation::query()->visibleTo($user)->where('status', 'open')->where('kind', 'chat')->count();
+        $openCount = Conversation::query()->visibleTo($user)->live()->count();
 
         return response()->json([
             'conversations' => $rows->map(fn (Conversation $c) => $this->row($c)),
@@ -68,7 +69,10 @@ class ChatController extends Controller
             ] : null,
             'assignees' => $assignees,
             'open_count' => $openCount,
-            'unlinked' => $user->hasGlobalAccess() ? Conversation::whereNull('website_id')->count() : 0,
+            // Tawk.to chats from a property no website is linked to yet
+            'unlinked' => $user->hasGlobalAccess()
+                ? Conversation::whereNull('website_id')->whereNotNull('property_id')->count()
+                : 0,
             'pusher' => [
                 'key' => config('broadcasting.connections.pusher.key'),
                 'cluster' => config('broadcasting.connections.pusher.options.cluster') ?: 'mt1',
@@ -112,7 +116,7 @@ class ChatController extends Controller
             ...$c->only(['id', 'kind', 'provider', 'status', 'last_message', 'last_message_at', 'message_count', 'property_name']),
             'display_name' => $c->displayName(),
             'visitor_email' => $c->visitor_email,
-            'is_live' => $c->status === 'open' && $c->kind === 'chat',
+            'is_live' => $c->isLive(),
             'website' => $c->website?->only(['id', 'name']),
             'can_reply' => $c->provider === 'native' && $c->status === 'open',
         ];

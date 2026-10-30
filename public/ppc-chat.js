@@ -33,6 +33,9 @@
   var greeting = script.getAttribute("data-greeting") || "Welcome — send a message and a specialist will reply shortly.";
   var agentFallback = script.getAttribute("data-agent") || "Support specialist";
   var STORAGE_KEY = "ppc_chat_token_" + siteKey;
+  // Poll fast only when realtime (Pusher) isn't delivering; otherwise a slow safety net
+  var POLL_FAST_MS = 4000;
+  var POLL_SLOW_MS = 30000;
   var CONTACT_SKIP_KEY = "ppc_chat_contact_skip_" + siteKey;
 
   var state = {
@@ -44,8 +47,10 @@
     pusher: null,
     channel: null,
     pollTimer: null,
+    lastPoll: 0,
+    realtime: false,
     sending: false,
-    started: false,
+    session: null,
     unread: 0,
     agentName: null,
     agentOnline: false,
@@ -56,9 +61,12 @@
 
   function api(path, opts) {
     opts = opts || {};
+    // A GET without Content-Type is a "simple" cross-origin request: no CORS preflight per poll
+    var headers = { Accept: "application/json" };
+    if (opts.body) headers["Content-Type"] = "application/json";
     return fetch(base + path, {
       method: opts.method || "GET",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
       credentials: "omit",
     }).then(function (res) {
@@ -137,8 +145,8 @@
       "#ppc-chat-header .ppc-status-dot.away{background:#fcd34d;box-shadow:0 0 0 3px rgba(252,211,77,.25)}" +
       "#ppc-chat-header button{background:rgba(255,255,255,.12);border:0;color:#fff;cursor:pointer;width:32px;height:32px;border-radius:8px;font-size:18px;line-height:1;flex-shrink:0}" +
       "#ppc-chat-header button:hover{background:rgba(255,255,255,.2)}" +
-      "#ppc-chat-msgs{flex:1;overflow-y:auto;padding:16px 14px;background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);display:flex;flex-direction:column;gap:12px}" +
-      ".ppc-row{display:flex;flex-direction:column;gap:4px;max-width:88%;animation:ppc-fade-up .28s ease}" +
+      "#ppc-chat-msgs{flex:1;overflow-x:hidden;overflow-y:auto;padding:16px 14px;background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);display:flex;flex-direction:column;gap:12px}" +
+      ".ppc-row{display:flex;flex-direction:column;gap:4px;max-width:min(88%,320px);min-width:0;animation:ppc-fade-up .28s ease}" +
       ".ppc-row.visitor{align-self:flex-end;align-items:flex-end}" +
       ".ppc-row.agent{align-self:flex-start;align-items:flex-start}" +
       ".ppc-row.system{align-self:center;max-width:95%}" +
@@ -150,7 +158,7 @@
       rgb.b +
       ",.28)}" +
       ".ppc-label{font-size:11px;font-weight:600;color:#64748b;padding:0 4px}" +
-      ".ppc-bubble{padding:10px 13px;border-radius:16px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}" +
+      ".ppc-bubble{padding:10px 13px;border-radius:16px;font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-width:100%;overflow:hidden}" +
       ".ppc-row.visitor .ppc-bubble{background:" +
       accent +
       ";color:#fff;border-bottom-right-radius:5px}" +
@@ -185,6 +193,12 @@
       "#ppc-chat-prechat .ppc-prechat-actions{display:flex;gap:8px;margin-top:4px}" +
       "#ppc-chat-prechat .ppc-prechat-actions button{flex:1;height:42px}" +
       "#ppc-chat-prechat .ppc-skip{background:#fff;color:#475569;border:1px solid #e2e8f0}" +
+      "#ppc-chat-error{display:none;margin:0 12px 10px;padding:9px 12px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:12.5px;line-height:1.4}" +
+      "#ppc-chat-error.show{display:block}" +
+      "#ppc-chat-ended p{margin:0 0 10px}" +
+      "#ppc-chat-ended button{border:0;border-radius:10px;background:" +
+      accent +
+      ";color:#fff;padding:9px 16px;font-size:13px;font-weight:650;cursor:pointer}" +
       "#ppc-chat-ended{padding:14px;text-align:center;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0;background:#fff}" +
       "#ppc-chat-toast{position:absolute;right:0;bottom:76px;width:min(300px,calc(100vw - 28px));background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.22);padding:12px 14px;display:none;gap:10px;align-items:flex-start;cursor:pointer;animation:ppc-fade-up .3s ease}" +
       "#ppc-chat-toast.show{display:flex}" +
@@ -404,21 +418,32 @@
     setComposerVisible();
   }
 
+  function pollOnce() {
+    if (!state.visitorToken) return;
+    state.lastPoll = Date.now();
+    var since = state.messages.length ? state.messages[state.messages.length - 1].id : 0;
+    api("/api/chat/messages?visitor_token=" + encodeURIComponent(state.visitorToken) + "&since_id=" + since)
+      .then(function (data) {
+        state.status = data.status || state.status;
+        (data.messages || []).forEach(function (m) {
+          upsertMessage(m);
+        });
+        setComposerVisible();
+      })
+      .catch(function () {});
+  }
+
   function startPolling() {
     if (state.pollTimer) return;
+    state.lastPoll = Date.now();
     state.pollTimer = setInterval(function () {
-      if (!state.visitorToken) return;
-      var since = state.messages.length ? state.messages[state.messages.length - 1].id : 0;
-      api("/api/chat/messages?visitor_token=" + encodeURIComponent(state.visitorToken) + "&since_id=" + since)
-        .then(function (data) {
-          state.status = data.status || state.status;
-          (data.messages || []).forEach(function (m) {
-            upsertMessage(m);
-          });
-          setComposerVisible();
-        })
-        .catch(function () {});
-    }, 3000);
+      if (state.status !== "open" || document.visibilityState === "hidden") return;
+      var every = state.realtime ? POLL_SLOW_MS : POLL_FAST_MS;
+      if (Date.now() - state.lastPoll >= every - 250) pollOnce();
+    }, POLL_FAST_MS);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && state.status === "open") pollOnce();
+    });
   }
 
   function loadPusher(cb) {
@@ -457,12 +482,23 @@
         channel.bind("ChatMessageSent", function (payload) {
           if (payload && payload.message) {
             if (payload.message.sender_type === "agent" && state.open) flashTyping(false);
+            if (payload.status) state.status = payload.status;
             upsertMessage(payload.message);
           }
         });
-        channel.bind("pusher:subscription_error", function () {
-          startPolling();
+        var subscribed = false;
+        var syncRealtime = function () {
+          state.realtime = subscribed && client.connection.state === "connected";
+        };
+        channel.bind("pusher:subscription_succeeded", function () {
+          subscribed = true;
+          syncRealtime();
         });
+        channel.bind("pusher:subscription_error", function () {
+          subscribed = false;
+          syncRealtime();
+        });
+        client.connection.bind("state_change", syncRealtime);
         startPolling();
       } catch (e) {
         startPolling();
@@ -470,10 +506,10 @@
     });
   }
 
+  // Every caller waits for the same request, so a visitor typing fast never sends without a token
   function ensureSession() {
-    if (state.started) return Promise.resolve();
-    state.started = true;
-    return api("/api/chat/session", {
+    if (state.session) return state.session;
+    state.session = api("/api/chat/session", {
       method: "POST",
       body: {
         public_key: siteKey,
@@ -499,7 +535,64 @@
       setComposerVisible();
       subscribeRealtime(data.pusher);
       return data;
+    }, function (e) {
+      state.session = null; // let the next attempt retry
+      throw e;
     });
+    return state.session;
+  }
+
+  /** After a chat ends, the visitor can start over without reloading the page */
+  function startNewChat() {
+    var name = state.visitorName;
+    var email = state.visitorEmail;
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {}
+    if (state.pusher) {
+      try {
+        state.pusher.disconnect();
+      } catch (e) {}
+    }
+    state.pusher = null;
+    state.channel = null;
+    state.realtime = false;
+    state.session = null;
+    state.visitorToken = null;
+    state.conversationId = null;
+    state.messages = [];
+    state.status = "open";
+    state.agentName = null;
+    state.agentOnline = false;
+    renderMessages();
+    setComposerVisible();
+    var session = ensureSession();
+    if (name || email) {
+      // Same visitor: carry their details over before the first message creates the lead,
+      // and make every caller (sendMessage) wait for that too
+      state.session = session.then(function (data) {
+        return api("/api/chat/visitor", {
+          method: "POST",
+          body: { visitor_token: state.visitorToken, name: name, email: email },
+        })
+          .then(function () {
+            state.visitorName = name;
+            state.visitorEmail = email;
+          })
+          .catch(function () {})
+          .then(function () {
+            return data;
+          });
+      });
+    }
+    state.session
+      .then(function () {
+        var input = document.getElementById("ppc-chat-input");
+        if (input) input.focus();
+      })
+      .catch(function (e) {
+        showError(e.message || "Chat is unavailable right now. Please try again shortly.");
+      });
   }
 
   function sendMessage(body) {
@@ -518,7 +611,9 @@
         upsertMessage(data.message);
       })
       .catch(function (e) {
-        alert(e.message || "Could not send message");
+        showError(e.message || "Your message could not be sent. Please try again.");
+        var input = document.getElementById("ppc-chat-input");
+        if (input && !input.value) input.value = body;
       })
       .finally(function () {
         state.sending = false;
@@ -550,8 +645,19 @@
         }
       })
       .catch(function (e) {
-        alert(e.message || "Chat is unavailable");
+        showError(e.message || "Chat is unavailable right now. Please try again shortly.");
       });
+  }
+
+  function showError(message) {
+    var box = document.getElementById("ppc-chat-error");
+    if (!box) return;
+    box.textContent = message;
+    box.classList.add("show");
+    clearTimeout(showError._t);
+    showError._t = setTimeout(function () {
+      box.classList.remove("show");
+    }, 6000);
   }
 
   function closePanel() {
@@ -596,6 +702,7 @@
         }),
       ]),
       el("div", { id: "ppc-chat-msgs" }),
+      el("div", { id: "ppc-chat-error", role: "alert" }),
       el("div", { id: "ppc-chat-typing" }, [
         el("div", { class: "ppc-dots", html: "<i></i><i></i><i></i>" }),
         el("span", { text: "Specialist is responding…" }),
@@ -604,6 +711,8 @@
         "form",
         {
           id: "ppc-chat-prechat",
+          // Not a lead form for ppc-leads.js: the chat creates its own lead
+          "data-ppc-ignore": "",
           onSubmit: function (e) {
             e.preventDefault();
             var name = document.getElementById("ppc-chat-name").value.trim();
@@ -628,7 +737,7 @@
                 if (input) input.focus();
               })
               .catch(function (err) {
-                alert(err.message || "Could not save your details");
+                showError(err.message || "Could not save your details. Please try again.");
               });
           },
         },
@@ -656,6 +765,7 @@
         "form",
         {
           id: "ppc-chat-form",
+          "data-ppc-ignore": "",
           onSubmit: function (e) {
             e.preventDefault();
             var input = document.getElementById("ppc-chat-input");
@@ -677,7 +787,10 @@
           el("button", { type: "submit", text: "Send" }),
         ]
       ),
-      el("div", { id: "ppc-chat-ended", style: "display:none", text: "This conversation has ended. Thank you for chatting with us." }),
+      el("div", { id: "ppc-chat-ended", style: "display:none" }, [
+        el("p", { text: "This conversation has ended. Thank you for chatting with us." }),
+        el("button", { type: "button", text: "Start a new chat", onClick: startNewChat }),
+      ]),
     ]);
 
     var bubble = el("button", {

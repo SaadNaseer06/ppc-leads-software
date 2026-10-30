@@ -63,7 +63,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Dashboard screens: a page the role can't use goes back to the dashboard,
         // a missing or hidden record shows the "not found" page inside the app shell
         $exceptions->respond(function (Response $response, Throwable $e, Request $request) {
-            if ($request->is('api/*') || $request->is('up')) {
+            if ($request->is('api/*') || $request->is('up') || $request->is('broadcasting/*')) {
                 return $response;
             }
             $status = $response->getStatusCode();

@@ -33,7 +33,10 @@ class NativeChatController extends Controller
             $data['page_url'] ?? null,
         );
 
-        $conversation = $result['conversation']->load(['messages' => fn ($q) => $q->orderBy('sent_at')->limit(200)]);
+        $conversation = $result['conversation'];
+        // The newest 200 messages, oldest first
+        $conversation->setRelation('messages', $conversation->messages()
+            ->orderByDesc('sent_at')->orderByDesc('id')->limit(200)->get()->reverse()->values());
 
         return response()->json([
             'conversation_id' => $conversation->id,

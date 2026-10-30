@@ -33,8 +33,10 @@ export function LeadActions({
   const [convertOpen, setConvertOpen] = useState(false);
   const [handoffUserId, setHandoffUserId] = useState("");
   const upSales = assignees.filter((a) => a.role === "UP_SALES");
+  // An Up Sales rep converting their own lead keeps it
+  const handoffKeepsMe = upSales.some((u) => u.id === assigneeId) && (!handoffUserId || Number(handoffUserId) === assigneeId);
 
-  async function patch(body: Record<string, unknown>, message: string) {
+  async function patch(body: Record<string, unknown>, message: string, reload = true) {
     setSaving(true);
     const res = await apiRequest(`/api/leads/${leadId}`, { method: "PATCH", body });
     setSaving(false);
@@ -44,7 +46,7 @@ export function LeadActions({
     }
     toast.success(message);
     syncLive();
-    router.reload();
+    if (reload) router.reload();
     return true;
   }
 
@@ -139,19 +141,21 @@ export function LeadActions({
           className="space-y-4"
           onSubmit={async (e) => {
             e.preventDefault();
+            // Sales reps lose access once the lead moves to Up Sales, so they go back to their list
+            const leaving = !canAssign && !handoffKeepsMe;
             const ok = await patch(
               { status: LeadStatus.converted, handoff_user_id: handoffUserId ? Number(handoffUserId) : null },
-              "Lead converted and handed off"
+              "Lead converted and handed off",
+              !leaving
             );
             if (ok) setConvertOpen(false);
-            // Sales reps lose access once the lead moves to Up Sales
-            if (ok && !canAssign) router.visit("/leads");
+            if (ok && leaving) router.visit("/leads");
           }}
         >
           <div>
             <label className="label" htmlFor="handoff">Hand off to</label>
             <select id="handoff" className="input" value={handoffUserId} onChange={(e) => setHandoffUserId(e.target.value)}>
-              <option value="">First available Up Sales rep</option>
+              <option value="">Next Up Sales rep in rotation</option>
               {upSales.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name} · {u.open_leads.toLocaleString("en-US")} open

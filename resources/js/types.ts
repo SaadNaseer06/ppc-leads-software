@@ -8,6 +8,7 @@ export type Permission =
   | "view_chats"
   | "view_invoices"
   | "create_invoice"
+  | "manage_invoices"
   | "view_finance"
   | "view_reports"
   | "manage_websites"

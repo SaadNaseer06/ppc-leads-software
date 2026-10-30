@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Brand;
+use App\Models\Conversation;
 use App\Models\Invoice;
 use App\Models\Lead;
 use App\Models\Website;
@@ -79,8 +80,8 @@ class BrandController extends Controller
     }
 
     /**
-     * Super Admin / Developer only. Removes the brand and its websites, leads and invoices.
-     * Team memberships for the brand are cleared; users themselves are kept.
+     * Super Admin / Developer only. Removes the brand and its websites, leads, chats and
+     * invoices. Team memberships for the brand are cleared; users themselves are kept.
      */
     public function destroy(Request $request, int $id): JsonResponse
     {
@@ -103,11 +104,21 @@ class BrandController extends Controller
         }
 
         $name = $brand->name;
+        // Small batches: one huge DELETE would lock the leads table for everyone and outlive
+        // shared hosting's time limit. If it is interrupted, deleting again picks up the rest.
+        @set_time_limit(0);
+        ignore_user_abort(true);
+        $inBatches = function ($query) {
+            while ((clone $query)->limit(1000)->delete() > 0) {
+            }
+        };
+        // Invoices block lead deletes (restrictOnDelete); their payments cascade
+        $inBatches(Invoice::where('brand_id', $brand->id));
+        // Chat messages cascade with their conversation
+        $inBatches(Conversation::where('brand_id', $brand->id));
+        // Lead activities cascade
+        $inBatches(Lead::where('brand_id', $brand->id));
         DB::transaction(function () use ($brand) {
-            // Invoices block lead/brand deletes (restrictOnDelete)
-            Invoice::where('brand_id', $brand->id)->delete();
-            // Lead activities cascade; conversations.lead_id / brand_id null on delete
-            Lead::where('brand_id', $brand->id)->delete();
             // Websites block brand deletes (restrictOnDelete)
             Website::where('brand_id', $brand->id)->delete();
             $brand->users()->detach();

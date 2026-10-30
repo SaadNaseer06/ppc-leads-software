@@ -11,6 +11,10 @@ use Illuminate\Database\UniqueConstraintViolationException;
 
 class Invoice extends Model
 {
+    public const STATUSES = ['sent', 'paid', 'cancelled'];
+
+    public const PAYMENT_METHODS = ['bank_transfer', 'card', 'cash', 'cheque', 'paypal', 'stripe', 'other'];
+
     protected $guarded = ['id'];
 
     protected function casts(): array

@@ -121,6 +121,7 @@
 
   function isLeadForm(form) {
     if (form.hasAttribute("data-ppc-ignore")) return false;
+    if (form.closest && form.closest("#ppc-chat-root")) return false; // our own chat widget
     if (form.matches && !form.matches(formSelector)) return false;
     if (form.querySelector('input[type="password"]')) return false; // login / sign-up
     if (form.getAttribute("role") === "search") return false;

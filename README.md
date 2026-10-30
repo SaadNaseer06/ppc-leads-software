@@ -31,7 +31,8 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
 - **Lead timeline.** Creation, repeat submissions, assignments, status changes, notes and chats. Repeat submissions
   from the same email/phone within 30 days merge into the existing lead instead of duplicating it.
 - **Roles.** Super Admin, Admin, Front Sales, Up Sales, Finance, Developer. Each user is scoped to their brands, and
-  sales reps only see their own leads. Invoices, PDF downloads, finance and per-brand sales reports are included.
+  sales reps only see their own leads. Invoices with payment tracking (part payments, paid, cancelled), PDF downloads,
+  finance and per-brand sales reports are included.
 
 ## Run it locally
 
@@ -42,7 +43,7 @@ Requires PHP 8.2+ with Composer, MySQL (XAMPP, a local install, or `docker compo
 composer install
 cp .env.example .env          # DB_* (database ppc_leads), REPORT_TIMEZONE
 php artisan key:generate
-php artisan migrate --seed    # tables + demo brands, websites, team, ~400 leads and chats
+php artisan migrate --seed    # tables + the demo team accounts below (add brands and websites in the app)
 php artisan serve             # http://127.0.0.1:8000
 ```
 
@@ -53,12 +54,12 @@ Every demo account uses the password `password123`:
 
 | Email | Role | Sees |
 |---|---|---|
-| superadmin@ppc.local | Super Admin | Everything |
-| admin@ppc.local | Admin | Both demo brands; assigns leads, manages the team and websites |
-| front1@ppc.local | Front Sales | Only leads assigned to them |
-| upsales@ppc.local | Up Sales | Converted leads handed to them |
-| finance@ppc.local | Finance | Invoices, payments, reports |
-| dev@ppc.local | Developer | Everything, for testing (use staging data) |
+| superadmin@ppc.lead | Super Admin | Everything |
+| admin@ppc.lead | Admin | The brands given to them on the Team page; assigns leads, manages the team and websites |
+| front1@ppc.lead | Front Sales | Only leads assigned to them |
+| upsales@ppc.lead | Up Sales | Converted leads handed to them |
+| finance@ppc.lead | Finance | Invoices, payments, reports |
+| dev@ppc.lead | Developer | Everything, for testing (use staging data) |
 
 For a real install, skip `--seed` and create the first account with
 `php artisan ppc:create-admin you@company.com "Your Name"`.
@@ -114,7 +115,7 @@ with a token from `POST /api/auth/login` (`Authorization: Bearer …`). Errors a
 | `POST /api/leads/bulk` · `GET /api/leads/export` | Bulk assign/status (≤ 500); streaming CSV |
 | `GET /api/chats` · `GET/POST /api/websites` · `GET/PATCH /api/websites/{id}` | Tawk.to inbox; websites, snippets, delivery log |
 | `GET/POST /api/admin/users` · `PATCH /api/admin/users/{id}` · `GET/POST/PATCH /api/admin/brands` | Team; brands and auto-assign |
-| `GET/POST /api/invoices` · `GET /api/invoices/{id}/pdf` · `GET /api/finance` · `POST /api/finance/bulk-pdf` · `GET /api/reports/sales-by-brand` | Invoices, PDFs, finance, reports |
+| `GET/POST /api/invoices` · `PATCH /api/invoices/{id}` · `POST /api/invoices/{id}/payments` · `GET /api/invoices/{id}/pdf` · `GET /api/finance` · `POST /api/finance/bulk-pdf` · `GET /api/reports/sales-by-brand` | Invoices (status: sent / paid / cancelled), payments, PDFs, finance, reports |
 
 ## Built for large lead volumes
 

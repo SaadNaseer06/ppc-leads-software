@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\LeadStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Brand;
 use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\Website;
@@ -28,7 +29,7 @@ class DashboardController extends Controller
                 ->orderByDesc('created_at')->orderByDesc('id')->limit(7)
                 ->get(['id', 'name', 'status', 'channel', 'created_at', 'website_id', 'assignee_id']),
             'recent_chats' => $user->canViewChats()
-                ? Conversation::query()->visibleTo($user)->with('website:id,name')
+                ? Conversation::query()->visibleTo($user)->started()->with('website:id,name')
                     ->orderByDesc('last_message_at')->limit(5)->get()
                     ->map(fn (Conversation $c) => [
                         ...$c->only(['id', 'kind', 'status', 'last_message', 'last_message_at']),
@@ -59,6 +60,7 @@ class DashboardController extends Controller
 
         return response()->json([
             'websites' => Website::query()->visibleTo($user)->orderBy('name')->get(['id', 'name', 'brand_id']),
+            'brands' => Brand::query()->visibleTo($user)->orderBy('name')->get(['id', 'name']),
             'assignees' => $user->canAssignLeads() ? $team->assignable($user) : [],
         ]);
     }

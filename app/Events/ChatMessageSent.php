@@ -23,6 +23,8 @@ class ChatMessageSent implements ShouldBroadcastNow
         return array_values(array_filter([
             new PrivateChannel('chat.'.$this->message->conversation_id),
             $conversation?->brand_id ? new PrivateChannel('chats.'.$conversation->brand_id) : null,
+            // Super Admin / Developer inboxes (they belong to no brand)
+            new PrivateChannel('chats.all'),
         ]));
     }
 
@@ -35,6 +37,8 @@ class ChatMessageSent implements ShouldBroadcastNow
     {
         return [
             'conversation_id' => $this->message->conversation_id,
+            // The widget closes its composer as soon as an agent ends the chat
+            'status' => $this->message->conversation?->status,
             'message' => [
                 'id' => $this->message->id,
                 'sender_type' => $this->message->sender_type,

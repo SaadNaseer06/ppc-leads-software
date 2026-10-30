@@ -17,6 +17,7 @@ return [
     'count_cap' => 10_000,
     'search_count_cap' => 1_000,
 
-    // A chat with no chat:end event after this long is treated as finished.
+    // A chat with no message for this long is no longer "live"; native chats are
+    // then closed by the scheduled `chats:close-idle` command.
     'active_chat_hours' => 3,
 ];

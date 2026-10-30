@@ -58,9 +58,12 @@ return [
                 'scheme' => env('PUSHER_SCHEME', 'https'),
                 'encrypted' => true,
                 'useTLS' => env('PUSHER_SCHEME', 'https') === 'https',
+                // A slow Pusher must not hold a PHP worker (shared hosting has few): give up fast
+                'timeout' => 5,
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                'connect_timeout' => 3,
             ],
         ],
 

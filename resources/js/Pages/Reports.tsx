@@ -9,7 +9,7 @@ export default function Reports({ reports }: { reports: BrandReport[] }) {
       <Head title="Reports" />
       <PageHeader
         title="Sales by brand"
-        description="All-time totals. Invoice totals exclude cancelled invoices. Super Admin and Finance see every brand."
+        description="All-time totals per brand. Lead counts exclude spam; invoiced and collected amounts exclude cancelled invoices."
       />
 
       {reports.length === 0 ? (
@@ -29,7 +29,8 @@ export default function Reports({ reports }: { reports: BrandReport[] }) {
                 />
                 <Row label="Invoices" value={formatNumber(r.invoice_count)} />
                 <Row label="Invoiced" value={formatMoney(r.total_amount)} strong />
-                <Row label="Marked paid" value={formatMoney(r.paid_amount)} />
+                <Row label="Collected" value={formatMoney(r.paid_amount)} />
+                <Row label="Outstanding" value={formatMoney(r.outstanding_amount)} />
               </dl>
             </div>
           ))}

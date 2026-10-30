@@ -188,7 +188,9 @@ export function CreateBrandButton() {
                 setSlugTouched(true);
                 setSlug(e.target.value);
               }}
-              pattern="[a-z0-9-]+"
+              // Browsers compile pattern with the "v" flag, where a bare "-" in a class is invalid
+              pattern="[a-z0-9\-]+"
+              title="Lowercase letters, numbers and dashes"
               required
             />
           </div>

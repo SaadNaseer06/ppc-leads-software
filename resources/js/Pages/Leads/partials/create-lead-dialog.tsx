@@ -10,7 +10,7 @@ export function CreateLeadButton({
   assignees,
   canAssign,
 }: {
-  websites: Ref[];
+  websites: (Ref & { brand_id: number })[];
   assignees: Assignee[];
   canAssign: boolean;
 }) {
@@ -18,6 +18,10 @@ export function CreateLeadButton({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [websiteId, setWebsiteId] = useState("");
+  // Only people in the chosen website's brand can take the lead
+  const brandId = websites.find((w) => String(w.id) === websiteId)?.brand_id;
+  const eligible = brandId ? assignees.filter((a) => a.brand_ids.includes(brandId)) : [];
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -78,7 +82,14 @@ export function CreateLeadButton({
           </div>
           <div>
             <label className="label" htmlFor="lead-website">Website *</label>
-            <select id="lead-website" className="input" name="websiteId" required defaultValue="">
+            <select
+              id="lead-website"
+              className="input"
+              name="websiteId"
+              required
+              value={websiteId}
+              onChange={(e) => setWebsiteId(e.target.value)}
+            >
               <option value="" disabled>Choose a website</option>
               {websites.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
@@ -88,9 +99,11 @@ export function CreateLeadButton({
           {canAssign ? (
             <div className="sm:col-span-2">
               <label className="label" htmlFor="lead-assignee">Assign to</label>
-              <select id="lead-assignee" className="input" name="assigneeId" defaultValue="">
-                <option value="">Leave unassigned (or auto-assign if enabled)</option>
-                {assignees.map((a) => (
+              <select id="lead-assignee" className="input" name="assigneeId" defaultValue="" key={brandId ?? "none"}>
+                <option value="">
+                  {brandId ? "Leave unassigned (or auto-assign if enabled)" : "Choose a website first"}
+                </option>
+                {eligible.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} · {a.role_label} · {a.open_leads.toLocaleString("en-US")} open
                   </option>

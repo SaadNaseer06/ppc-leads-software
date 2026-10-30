@@ -113,7 +113,7 @@ If `php` is an older version in Terminal, call the one your domain uses, e.g. `/
 `storage/` and `bootstrap/cache/` must be writable by PHP (the default permissions on cPanel are fine; set folders to
 755 if you see "Permission denied").
 
-## 6. Cron job (daily cleanup)
+## 6. Cron job (scheduled tasks)
 
 *Cron Jobs* → add, every minute (`* * * * *`):
 
@@ -121,7 +121,9 @@ If `php` is an older version in Terminal, call the one your domain uses, e.g. `/
 /usr/local/bin/php /home/cpuser/ppc-leads/artisan schedule:run >> /dev/null 2>&1
 ```
 
-It deletes webhook and audit logs older than 90 days once a day. The app works without it; the tables just keep growing.
+Every 10 minutes it closes live chats whose visitor has gone quiet for 3 hours (so the "live" chat counts stay
+accurate), and once a day it deletes webhook and audit logs older than 90 days. The app works without it, but
+abandoned chats then stay open and the log tables keep growing.
 
 ## 7. Check it
 

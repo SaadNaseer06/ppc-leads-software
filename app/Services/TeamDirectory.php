@@ -6,6 +6,7 @@ use App\Enums\LeadStatus;
 use App\Enums\Role;
 use App\Models\Lead;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class TeamDirectory
 {
@@ -13,7 +14,7 @@ class TeamDirectory
      * Active users who can receive leads in the brands this user manages (or in
      * one brand), with their current open-lead workload.
      *
-     * @return list<array{id: int, name: string, role: string, role_label: string, open_leads: int}>
+     * @return list<array{id: int, name: string, role: string, role_label: string, open_leads: int, brand_ids: list<int>}>
      */
     public function assignable(User $user, ?int $brandId = null): array
     {
@@ -37,6 +38,9 @@ class TeamDirectory
             ->groupBy('assignee_id')
             ->selectRaw('assignee_id, COUNT(*) AS n')
             ->pluck('n', 'assignee_id');
+        // Lets pickers offer only people who can take every selected lead
+        $brands = DB::table('brand_user')->whereIn('user_id', $users->pluck('id'))->get(['user_id', 'brand_id'])
+            ->groupBy('user_id')->map(fn ($rows) => $rows->pluck('brand_id')->map(fn ($id) => (int) $id)->values()->all());
 
         return $users->map(fn (User $u) => [
             'id' => $u->id,
@@ -44,6 +48,7 @@ class TeamDirectory
             'role' => $u->role->value,
             'role_label' => $u->role->label(),
             'open_leads' => (int) ($open[$u->id] ?? 0),
+            'brand_ids' => $brands[$u->id] ?? [],
         ])->all();
     }
 
@@ -65,6 +70,7 @@ class TeamDirectory
                 'view_chats' => $user->canViewChats(),
                 'view_invoices' => $user->canViewInvoices(),
                 'create_invoice' => $user->canCreateInvoice(),
+                'manage_invoices' => $user->canManageInvoices(),
                 'view_finance' => $user->canViewFinance(),
                 'view_reports' => $user->canViewReports(),
                 'manage_websites' => $user->canManageWebsites(),

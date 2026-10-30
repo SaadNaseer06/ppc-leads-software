@@ -24,10 +24,7 @@ class LiveCounts
                 : 0,
             'my_new' => $this->capped(Lead::where('assignee_id', $user->id)->where('status', LeadStatus::New->value), 1000),
             'active_chats' => $user->canViewChats()
-                ? $this->capped(Conversation::query()->visibleTo($user)
-                    ->where('status', 'open')
-                    ->where('kind', 'chat')
-                    ->where('started_at', '>', now()->subHours(config('ppc.active_chat_hours'))), 1000)
+                ? $this->capped(Conversation::query()->visibleTo($user)->live(), 1000)
                 : 0,
         ];
     }

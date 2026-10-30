@@ -29,7 +29,8 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className="modal"
+      // text-left: a dialog opened from a right-aligned table cell would inherit its alignment
+      className="modal text-left font-normal"
       style={wide ? { width: "min(760px, calc(100vw - 2rem))" } : undefined}
       onClose={onClose}
       onClick={(e) => {

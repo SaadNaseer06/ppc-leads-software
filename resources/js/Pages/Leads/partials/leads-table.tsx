@@ -20,6 +20,7 @@ export type LeadRowView = {
   channel: string;
   campaign: string | null;
   websiteName: string;
+  brandId: number | null;
   assigneeName: string | null;
   submissionCount: number;
   received: string;
@@ -31,12 +32,14 @@ export function LeadsTable({
   assignees,
   canAssign,
   canChangeStatus,
+  canManageWebsites,
   emptyFiltered,
 }: {
   rows: LeadRowView[];
   assignees: Assignee[];
   canAssign: boolean;
   canChangeStatus: boolean;
+  canManageWebsites: boolean;
   emptyFiltered: boolean;
 }) {
   const toast = useToast();
@@ -51,6 +54,9 @@ export function LeadsTable({
   // Drop selections that are no longer on this page (after paging or filtering)
   const visibleSelected = new Set(rows.filter((r) => selected.has(r.id)).map((r) => r.id));
   const allSelected = rows.length > 0 && visibleSelected.size === rows.length;
+  // Leads only go to people in their brand, so offer those who can take every selected lead
+  const selectedBrands = [...new Set(rows.filter((r) => visibleSelected.has(r.id)).map((r) => r.brandId))];
+  const eligible = assignees.filter((a) => selectedBrands.every((b) => b !== null && a.brand_ids.includes(b)));
 
   function toggle(id: number) {
     const next = new Set(visibleSelected);
@@ -87,10 +93,12 @@ export function LeadsTable({
           description={
             emptyFiltered
               ? "Try widening the date range or clearing a filter."
-              : "Connect a website or Tawk.to property and new leads will appear here automatically."
+              : canManageWebsites
+                ? "Connect a website and new leads will appear here automatically."
+                : "Leads assigned to you will appear here."
           }
           action={
-            emptyFiltered ? null : (
+            emptyFiltered || !canManageWebsites ? null : (
               <Link href="/websites" className="btn-secondary">
                 Set up a website
               </Link>
@@ -116,7 +124,12 @@ export function LeadsTable({
               >
                 <option value="">Assign to…</option>
                 <option value="__none__">Unassign</option>
-                {assignees.map((a) => (
+                {eligible.length === 0 ? (
+                  <option value="" disabled>
+                    Nobody works all of the selected brands
+                  </option>
+                ) : null}
+                {eligible.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} · {a.role_label} · {a.open_leads.toLocaleString("en-US")} open
                   </option>

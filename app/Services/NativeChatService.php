@@ -117,7 +117,7 @@ class NativeChatService
         }
 
         $this->ensureLead($conversation);
-        event(new ChatMessageSent($message->fresh('conversation')));
+        $this->broadcast($message);
 
         return $message;
     }
@@ -145,7 +145,7 @@ class NativeChatService
             'assigned_agent_id' => $conversation->assigned_agent_id ?? $agent->id,
         ]);
 
-        event(new ChatMessageSent($message->fresh('conversation')));
+        $this->broadcast($message);
 
         return $message;
     }
@@ -171,9 +171,39 @@ class NativeChatService
             'message_count' => $conversation->messages()->count(),
         ]);
 
-        event(new ChatMessageSent($system->fresh('conversation')));
+        $this->broadcast($system);
 
         return $conversation->fresh();
+    }
+
+    /**
+     * Ends native chats nobody has written in for `ppc.active_chat_hours`, so visitors who
+     * simply left don't stay "live" forever (and removes sessions that never got a message).
+     * The inbox order (last_message_at) is kept.
+     */
+    public function closeIdle(): int
+    {
+        $closed = 0;
+        Conversation::query()
+            ->where('status', 'open')
+            ->where('provider', 'native')
+            ->where('last_message_at', '<', now()->subHours(config('ppc.active_chat_hours')))
+            ->chunkById(200, function ($conversations) use (&$closed) {
+                foreach ($conversations as $conversation) {
+                    // The visitor opened the widget but never wrote: nothing worth keeping
+                    if ($conversation->message_count === 0 && ! $conversation->lead_id) {
+                        $conversation->delete();
+
+                        continue;
+                    }
+                    $at = CarbonImmutable::now();
+                    $conversation->messages()->create(['sender_type' => 'system', 'body' => 'Chat closed after inactivity', 'sent_at' => $at]);
+                    $conversation->update(['status' => 'ended', 'ended_at' => $at, 'message_count' => $conversation->message_count + 1]);
+                    $closed++;
+                }
+            });
+
+        return $closed;
     }
 
     /**
@@ -226,6 +256,16 @@ class NativeChatService
             $email = $updates['email'] ?? $lead->email;
             $updates['search_text'] = LeadText::searchText($name, $email, $lead->phone, $lead->company);
             $lead->update($updates);
+        }
+    }
+
+    /** Realtime is best-effort: the message is already saved and polling delivers it if Pusher is down */
+    private function broadcast(ConversationMessage $message): void
+    {
+        try {
+            event(new ChatMessageSent($message->fresh('conversation')));
+        } catch (\Throwable $e) {
+            report($e);
         }
     }
 

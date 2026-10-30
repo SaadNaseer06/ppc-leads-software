@@ -145,9 +145,11 @@ export default function Dashboard({ dashboard, range }: { dashboard: DashboardDa
         <section className="card">
           <div className="card-header">
             <h2 className="card-title">Leads by website</h2>
-            <Link href="/websites" className="text-xs font-medium text-teal-700 hover:underline">
-              Manage
-            </Link>
+            {user.can.manage_websites ? (
+              <Link href="/websites" className="text-xs font-medium text-teal-700 hover:underline">
+                Manage
+              </Link>
+            ) : null}
           </div>
           {data.websites.length === 0 ? (
             <p className="p-4 text-sm text-slate-500">No leads in this period.</p>

@@ -29,7 +29,12 @@ const FILTERS = [
   { key: "ticket", label: "Offline messages" },
 ] as const;
 
-const POLL_MS = 3000;
+// Without realtime the inbox polls every 5s. With Pusher connected, events trigger the
+// refreshes and polling is only a slow safety net (sales reps have no inbox channel, so
+// theirs is shorter): keeps the server quiet on shared hosting with many agents online.
+const POLL_MS = 5_000;
+const SAFETY_POLL_MS = 30_000;
+const REP_SAFETY_POLL_MS = 10_000;
 
 type SelectedChat = NonNullable<ChatsData["selected"]>;
 
@@ -70,6 +75,15 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<number | null>(initial.selected?.id ?? null);
   const [now, setNow] = useState(() => new Date());
+  const lastFetch = useRef(Date.now());
+  const realtime = useRef(false);
+  const refreshTimer = useRef<number | null>(null);
+  // Admins follow their brands' inbox feeds, Super Admin / Developer the global one
+  const inboxChannels = !user.can.assign_leads
+    ? ""
+    : user.can.manage_brands
+      ? "chats.all"
+      : user.brand_ids.map((id) => `chats.${id}`).join(",");
 
   selectedIdRef.current = selected?.id ?? null;
 
@@ -105,6 +119,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
 
   const fetchChats = useCallback(async () => {
     if (document.visibilityState !== "visible") return;
+    lastFetch.current = Date.now();
     const q = new URLSearchParams();
     if (kind) q.set("kind", kind);
     if (params.id) q.set("id", params.id);
@@ -127,8 +142,24 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     }
   }, [kind, params.id, params.before, applyPayload]);
 
+  // Many messages arriving together cause one refresh, not one per message
+  const refreshSoon = useCallback(() => {
+    if (refreshTimer.current !== null) return;
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      void fetchChats();
+    }, 400);
+  }, [fetchChats]);
+
+  useEffect(() => () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+  }, []);
+
   useEffect(() => {
-    const timer = setInterval(() => void fetchChats(), POLL_MS);
+    const timer = setInterval(() => {
+      const every = !realtime.current ? POLL_MS : inboxChannels ? SAFETY_POLL_MS : REP_SAFETY_POLL_MS;
+      if (Date.now() - lastFetch.current >= every - 250) void fetchChats();
+    }, POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") void fetchChats();
     };
@@ -137,7 +168,23 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [fetchChats]);
+  }, [fetchChats, inboxChannels]);
+
+  // Track whether Pusher is actually connected; if it drops, polling speeds back up
+  useEffect(() => {
+    if (!pusher?.key) return;
+    const connection = getEcho(pusher.key, pusher.cluster)?.connector.pusher.connection;
+    if (!connection) return;
+    const update = () => {
+      realtime.current = connection.state === "connected";
+    };
+    update();
+    connection.bind("state_change", update);
+    return () => {
+      connection.unbind("state_change", update);
+      realtime.current = false;
+    };
+  }, [pusher?.key, pusher?.cluster]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -153,7 +200,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     const handler = (payload: { message?: ChatMessage }) => {
       if (!payload?.message) return;
       setMessages((prev) => (prev.some((m) => m.id === payload.message!.id) ? prev : [...prev, payload.message!]));
-      void fetchChats();
+      refreshSoon();
     };
     channel.listen(".ChatMessageSent", handler);
 
@@ -161,24 +208,24 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       channel.stopListening(".ChatMessageSent", handler);
       echo.leave(channelName);
     };
-  }, [selected?.id, pusher?.key, pusher?.cluster, fetchChats]);
+  }, [selected?.id, pusher?.key, pusher?.cluster, refreshSoon]);
 
   useEffect(() => {
-    if (!pusher?.key || user.brand_ids.length === 0) return;
+    if (!pusher?.key || !inboxChannels) return;
     const echo = getEcho(pusher.key, pusher.cluster);
     if (!echo) return;
 
-    const brandIds = user.brand_ids;
-    const handler = () => void fetchChats();
-    for (const brandId of brandIds) {
-      echo.private(`chats.${brandId}`).listen(".ChatMessageSent", handler);
+    const names = inboxChannels.split(",");
+    const handler = () => refreshSoon();
+    for (const name of names) {
+      echo.private(name).listen(".ChatMessageSent", handler);
     }
     return () => {
-      for (const brandId of brandIds) {
-        echo.leave(`chats.${brandId}`);
+      for (const name of names) {
+        echo.leave(name);
       }
     };
-  }, [pusher?.key, pusher?.cluster, user.brand_ids, fetchChats]);
+  }, [pusher?.key, pusher?.cluster, inboxChannels, refreshSoon]);
 
   const query = (extra: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -321,11 +368,17 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
           <EmptyState
             icon={<MessageSquareOff className="h-5 w-5" />}
             title="No conversations yet"
-            description="Add the chat widget snippet on a website. Visitor messages appear here so you can reply from this dashboard."
+            description={
+              user.can.manage_websites
+                ? "Add the chat widget snippet on a website. Visitor messages appear here so you can reply from this dashboard."
+                : "Chats from visitors whose leads are assigned to you will appear here."
+            }
             action={
-              <Link href="/websites" className="btn-secondary">
-                Set up chat widget
-              </Link>
+              user.can.manage_websites ? (
+                <Link href="/websites" className="btn-secondary">
+                  Set up chat widget
+                </Link>
+              ) : null
             }
           />
         </div>
@@ -501,7 +554,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                   </div>
                 ) : null}
 
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-5 py-5">
+                <div className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-5 py-5">
                   {selected.subject ? (
                     <p className="text-center text-xs font-medium text-slate-500">Subject: {selected.subject}</p>
                   ) : null}
@@ -543,11 +596,11 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                               {dayLabel(m.sent_at, now)}
                             </p>
                           ) : null}
-                          <div className={`flex gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+                          <div className={`flex min-w-0 gap-2 ${mine ? "justify-end" : "justify-start"}`}>
                             {!mine ? <Avatar name={selected.display_name} /> : null}
-                            <div className={`max-w-[75%] ${mine ? "items-end" : "items-start"} flex flex-col`}>
+                            <div className={`flex min-w-0 max-w-[min(75%,28rem)] flex-col ${mine ? "items-end" : "items-start"}`}>
                               <div
-                                className={`whitespace-pre-wrap break-words px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${
+                                className={`max-w-full overflow-hidden whitespace-pre-wrap break-all [overflow-wrap:anywhere] px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${
                                   mine
                                     ? "rounded-2xl rounded-br-md bg-teal-700 text-white"
                                     : "rounded-2xl rounded-bl-md border border-slate-200 bg-white text-slate-800"

@@ -60,6 +60,26 @@ class Conversation extends Model
         return $query->whereRaw('1 = 0');
     }
 
+    /** Widget sessions appear once the visitor writes; just opening the chat bubble isn't a conversation */
+    public function scopeStarted(Builder $query): Builder
+    {
+        return $query->where('conversations.message_count', '>', 0);
+    }
+
+    /** Chats still in progress: open and with a message in the last `ppc.active_chat_hours` */
+    public function scopeLive(Builder $query): Builder
+    {
+        return $query->started()->where('conversations.status', 'open')
+            ->where('conversations.last_message_at', '>', now()->subHours(config('ppc.active_chat_hours')))
+            ->where('conversations.kind', 'chat');
+    }
+
+    public function isLive(): bool
+    {
+        return $this->status === 'open' && $this->kind === 'chat' && $this->message_count > 0
+            && $this->last_message_at?->gt(now()->subHours(config('ppc.active_chat_hours')));
+    }
+
     /** Tawk names anonymous visitors like "V1561719148780935" */
     public static function realVisitorName(?string $name): ?string
     {

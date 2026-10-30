@@ -39,7 +39,7 @@ export default function Login({ showDemo }: { showDemo: boolean }) {
               Form submissions from all your websites, with the Google Ads click and campaign attached.
             </Feature>
             <Feature icon={<MessageSquare className="h-4 w-4" />} title="Chat">
-              Tawk.to chats and offline messages become leads the moment a visitor asks a question.
+              Live chats from your websites become leads the moment a visitor asks a question.
             </Feature>
             <Feature icon={<BarChart3 className="h-4 w-4" />} title="Assign & track">
               Route leads to your team, follow every touchpoint and see which campaigns convert.

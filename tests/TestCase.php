@@ -12,6 +12,17 @@ use Illuminate\Support\Str;
 
 abstract class TestCase extends BaseTestCase
 {
+    /** Tests wipe their database, so refuse to touch anything but a *_test database */
+    protected function setUpTraits()
+    {
+        $database = (string) config('database.connections.'.config('database.default').'.database');
+        if (! str_ends_with($database, '_test')) {
+            throw new \RuntimeException("Refusing to run tests against the \"{$database}\" database. Run `php artisan config:clear` and use a *_test database.");
+        }
+
+        return parent::setUpTraits();
+    }
+
     /** API routes authenticate with Sanctum, so sign test users in through it */
     public function actingAs(Authenticatable $user, $guard = null)
     {

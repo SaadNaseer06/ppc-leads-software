@@ -8,6 +8,7 @@ use App\Models\ActivityLog;
 use App\Models\Brand;
 use App\Models\Lead;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class LeadAssignment
@@ -111,7 +112,7 @@ class LeadAssignment
     /** @param list<int> $leadIds */
     public function bulkStatus(array $leadIds, LeadStatus $status, int $actorId): int
     {
-        $leads = Lead::whereIn('id', $leadIds)->where('status', '!=', $status->value)->get(['id', 'status']);
+        $leads = Lead::whereIn('id', $leadIds)->where('status', '!=', $status->value)->get(['id', 'status', 'brand_id', 'assignee_id']);
         if ($leads->isEmpty()) {
             return 0;
         }
@@ -129,7 +130,46 @@ class LeadAssignment
         });
         ActivityLog::record($actorId, 'lead.bulk_status', 'Lead', null, ['status' => $status->value, 'count' => $leads->count()]);
 
+        if ($status === LeadStatus::Converted) {
+            // Same hand-off as a single conversion, batched into one assignment per Up Sales rep
+            $upSalesIds = User::where('role', Role::UpSales->value)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $batches = [];
+            foreach ($leads as $lead) {
+                if ($lead->assignee_id && in_array((int) $lead->assignee_id, $upSalesIds, true)) {
+                    continue;
+                }
+                if ($to = $this->nextUpSales((int) $lead->brand_id)) {
+                    $batches[$to][] = $lead->id;
+                }
+            }
+            foreach ($batches as $to => $ids) {
+                $this->assign($ids, $to, $actorId, 'converted_handoff');
+            }
+        }
+
         return $leads->count();
+    }
+
+    /** Up Sales reps of the brand take converted leads in turn (rotation kept in the cache) */
+    public function nextUpSales(int $brandId): ?int
+    {
+        $reps = User::where('active', true)
+            ->where('role', Role::UpSales->value)
+            ->whereHas('brands', fn ($q) => $q->where('brands.id', $brandId))
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        if ($reps === []) {
+            return null;
+        }
+
+        $key = "handoff_rotation:{$brandId}";
+        $last = array_search((int) Cache::get($key), $reps, true);
+        $next = $reps[$last === false ? 0 : ($last + 1) % count($reps)];
+        Cache::forever($key, $next);
+
+        return $next;
     }
 
     /** Status change with a timeline entry. Converting hands the lead to Up Sales. */
@@ -150,11 +190,9 @@ class LeadAssignment
         });
 
         if ($status === LeadStatus::Converted) {
-            $toUserId = $handoffUserId ?? User::where('active', true)
-                ->where('role', Role::UpSales->value)
-                ->whereHas('brands', fn ($q) => $q->where('brands.id', $lead->brand_id))
-                ->orderBy('id')
-                ->value('id');
+            // A lead already with Up Sales stays with them unless someone else is picked
+            $current = $lead->assignee_id ? User::find($lead->assignee_id) : null;
+            $toUserId = $handoffUserId ?? ($current?->role === Role::UpSales ? null : $this->nextUpSales((int) $lead->brand_id));
             if ($toUserId) {
                 $this->assign([$lead->id], (int) $toUserId, $actorId, 'converted_handoff');
             }

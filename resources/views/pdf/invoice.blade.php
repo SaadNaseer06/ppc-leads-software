@@ -35,6 +35,10 @@
             <tr><td>{{ $item['label'] }}</td><td class="right">{{ $invoice->currency }} {{ number_format((float) $item['amount'], 2) }}</td></tr>
         @endforeach
         <tr class="total"><td>Total</td><td class="right">{{ $invoice->currency }} {{ number_format((float) $invoice->amount, 2) }}</td></tr>
+        @if((float) $invoice->paid_total > 0)
+            <tr><td class="muted">Amount paid</td><td class="right">{{ $invoice->currency }} {{ number_format((float) $invoice->paid_total, 2) }}</td></tr>
+            <tr class="total"><td>Balance due</td><td class="right">{{ $invoice->currency }} {{ number_format(max(0, (float) $invoice->amount - (float) $invoice->paid_total), 2) }}</td></tr>
+        @endif
         </tbody>
     </table>
 

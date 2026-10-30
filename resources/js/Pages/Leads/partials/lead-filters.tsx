@@ -29,11 +29,13 @@ export function LeadFiltersBar({
   filters,
   pageSize,
   websites,
+  brands,
   assignees,
 }: {
   filters: LeadFilters;
   pageSize: number;
-  websites: Option[];
+  websites: (Option & { brand_id: number })[];
+  brands: Option[];
   assignees: Option[];
 }) {
   const [pending, setPending] = useState(false);
@@ -101,11 +103,21 @@ export function LeadFiltersBar({
           options={Object.values(LeadStatus).map((s) => ({ id: s, name: STATUS_LABELS[s] }))}
           allLabel="Any status"
         />
+        {brands.length > 1 ? (
+          <Select
+            label="Brand"
+            value={filters.brand}
+            // A website from another brand would make the list empty, so reset it
+            onChange={(v) => navigate({ brand: v, website: undefined })}
+            options={brands}
+            allLabel="All brands"
+          />
+        ) : null}
         <Select
           label="Website"
           value={filters.website}
           onChange={(v) => navigate({ website: v })}
-          options={websites}
+          options={filters.brand ? websites.filter((w) => String(w.brand_id) === filters.brand) : websites}
           allLabel="All websites"
         />
         <Select

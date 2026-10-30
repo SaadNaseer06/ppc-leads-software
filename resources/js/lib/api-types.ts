@@ -3,7 +3,15 @@
 
 export type Ref = { id: number; name: string };
 
-export type Assignee = { id: number; name: string; role: string; role_label: string; open_leads: number };
+export type Assignee = {
+  id: number;
+  name: string;
+  role: string;
+  role_label: string;
+  open_leads: number;
+  /** Brands they work; leads can only go to people in the lead's brand */
+  brand_ids: number[];
+};
 
 export type LeadRow = {
   id: number;
@@ -44,7 +52,7 @@ export type LeadsPage = {
   filters: LeadFilters;
 };
 
-export type Lookups = { websites: (Ref & { brand_id: number })[]; assignees: Assignee[] };
+export type Lookups = { websites: (Ref & { brand_id: number })[]; brands: Ref[]; assignees: Assignee[] };
 
 export type ChatMessage = { id: number; sender_type: string; sender_name: string | null; body: string; sent_at: string };
 
@@ -253,6 +261,8 @@ export type InvoiceRow = {
   amount: string;
   currency: string;
   status: string;
+  /** Sum of recorded payments */
+  paid_total: string | null;
   created_at: string;
   brand: Ref;
   lead: Ref;
@@ -265,10 +275,21 @@ export type FinanceData = {
     amount: string;
     method: string;
     external_ref: string | null;
+    notes: string | null;
     recorded_at: string;
     invoice: { id: number; number: string; currency: string; brand: Ref; lead: Ref };
   }[];
-  invoices: { id: number; number: string; amount: string; currency: string; status: string; brand: Ref }[];
+  invoices: {
+    id: number;
+    number: string;
+    amount: string;
+    currency: string;
+    status: string;
+    paid_total: string | null;
+    created_at: string;
+    brand: Ref;
+    lead: Ref;
+  }[];
   limit: number;
 };
 
@@ -280,4 +301,5 @@ export type BrandReport = {
   invoice_count: number;
   total_amount: number;
   paid_amount: number;
+  outstanding_amount: number;
 };

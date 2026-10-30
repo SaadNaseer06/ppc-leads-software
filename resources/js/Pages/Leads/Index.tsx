@@ -36,6 +36,7 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
     channel: l.channel,
     campaign: l.campaign,
     websiteName: l.website?.name ?? l.brand?.name ?? "—",
+    brandId: l.brand?.id ?? null,
     assigneeName: l.assignee?.name ?? null,
     submissionCount: l.submission_count,
     received: formatRelative(l.created_at, now),
@@ -109,6 +110,7 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
         filters={filters}
         pageSize={pageSize}
         websites={lookups.websites}
+        brands={lookups.brands}
         assignees={canAssign ? lookups.assignees.map((a) => ({ id: String(a.id), name: a.name })) : []}
       />
 
@@ -117,6 +119,7 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
         assignees={lookups.assignees}
         canAssign={canAssign}
         canChangeStatus={user.can.work_leads}
+        canManageWebsites={user.can.manage_websites}
         emptyFiltered={Object.values(filters).some(Boolean)}
       />
 

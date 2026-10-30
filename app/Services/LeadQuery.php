@@ -116,18 +116,25 @@ class LeadQuery
         $order = $backwards ? 'asc' : 'desc';
 
         $fetch = function (?int $brandId) use ($user, $f, $position, $backwards, $order, $take) {
-            $q = $this->query($user, $f)->select(self::LIST_COLUMNS);
+            $ids = $this->query($user, $f)->select('leads.id');
             if ($brandId !== null) {
-                $q->where('leads.brand_id', $brandId);
+                $ids->where('leads.brand_id', $brandId);
             }
             if ($position) {
                 [$t, $id] = $position;
                 $op = $backwards ? '>' : '<';
-                $q->where(fn ($w) => $w->where('leads.created_at', $op, $t)
+                $ids->where(fn ($w) => $w->where('leads.created_at', $op, $t)
                     ->orWhere(fn ($e) => $e->where('leads.created_at', $t)->where('leads.id', $op, $id)));
             }
+            $ids->orderBy('leads.created_at', $order)->orderBy('leads.id', $order)->limit($take + 1);
 
-            return $q->orderBy('leads.created_at', $order)->orderBy('leads.id', $order)->limit($take + 1)->get();
+            // Deferred join: the page's ids come from a covering index alone (every filter
+            // column is in it), then only those rows are read. Without it MySQL reads a row
+            // for every index entry it rejects, seconds on a cold cache at scale.
+            return Lead::query()->select(self::LIST_COLUMNS)
+                ->joinSub($ids->toBase(), 'page', 'page.id', '=', 'leads.id')
+                ->orderBy('leads.created_at', $order)->orderBy('leads.id', $order)
+                ->get();
         };
 
         $split = $this->brandSplit($user, $f);

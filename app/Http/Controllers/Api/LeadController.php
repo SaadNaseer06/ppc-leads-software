@@ -84,7 +84,7 @@ class LeadController extends Controller
         $names = User::whereIn('id', $userIds)->pluck('name', 'id');
 
         $conversations = $lead->conversations()
-            ->with(['messages' => fn ($q) => $q->orderBy('sent_at')->limit(300)])
+            ->with(['messages' => fn ($q) => $q->orderByDesc('sent_at')->orderByDesc('id')->limit(300)])
             ->latest('started_at')->limit(5)->get();
 
         return response()->json([
@@ -113,7 +113,7 @@ class LeadController extends Controller
             ]),
             'conversations' => $conversations->map(fn ($c) => [
                 ...$c->only(['id', 'kind', 'status', 'subject', 'started_at']),
-                'messages' => $c->messages->map->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
+                'messages' => $c->messages->reverse()->values()->map->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
             ]),
             'invoices' => $user->canViewInvoices()
                 ? $lead->invoices()->latest()->limit(20)->get(['id', 'number', 'amount', 'currency', 'status', 'created_at'])
@@ -252,6 +252,9 @@ class LeadController extends Controller
         ];
 
         return response()->streamDownload(function () use ($user, $filters, $columns) {
+            // Hundreds of thousands of rows take minutes; shared hosting's max_execution_time
+            // would otherwise cut the file off silently part-way
+            @set_time_limit(0);
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, array_keys($columns));

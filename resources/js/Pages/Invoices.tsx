@@ -5,6 +5,7 @@ import type { SharedProps } from "@/types";
 import { formatDate, formatMoney } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { CreateInvoiceButton } from "./Invoices/partials/create-invoice-dialog";
+import { InvoiceActions, InvoiceStatusBadge, balanceDue } from "./Invoices/partials/invoice-actions";
 
 export default function Invoices({ invoices, limit: LIMIT }: { invoices: InvoiceRow[]; limit: number }) {
   const user = usePage<SharedProps>().props.auth.user!;
@@ -14,7 +15,11 @@ export default function Invoices({ invoices, limit: LIMIT }: { invoices: Invoice
       <Head title="Invoices" />
       <PageHeader
         title="Invoices"
-        description={`Sales and Admin create invoices; Finance and Super Admin see all. Showing the latest ${LIMIT}.`}
+        description={
+          user.can.manage_invoices
+            ? `Create invoices, record payments and track what is still due. Showing the latest ${LIMIT}.`
+            : `Invoices you have created for your leads. Showing the latest ${LIMIT}.`
+        }
         actions={user.can.create_invoice ? <CreateInvoiceButton /> : null}
       />
 
@@ -35,6 +40,7 @@ export default function Invoices({ invoices, limit: LIMIT }: { invoices: Invoice
                   <th>Lead</th>
                   <th>Brand</th>
                   <th className="text-right">Amount</th>
+                  <th className="text-right">Balance due</th>
                   <th>Status</th>
                   <th>Created by</th>
                   <th>Date</th>
@@ -44,21 +50,29 @@ export default function Invoices({ invoices, limit: LIMIT }: { invoices: Invoice
               <tbody>
                 {invoices.map((inv) => (
                   <tr key={inv.id}>
-                    <td className="font-medium text-slate-900">{inv.number}</td>
-                    <td>
-                      <Link href={`/leads/${inv.lead.id}`} className="text-teal-700 hover:underline">
+                    <td className="whitespace-nowrap font-medium text-slate-900">{inv.number}</td>
+                    <td className="max-w-[220px] truncate">
+                      <Link href={`/leads/${inv.lead.id}`} className="text-teal-700 hover:underline" title={inv.lead.name}>
                         {inv.lead.name}
                       </Link>
                     </td>
-                    <td>{inv.brand.name}</td>
+                    <td className="whitespace-nowrap">{inv.brand.name}</td>
                     <td className="text-right tabular-nums">{formatMoney(inv.amount, inv.currency)}</td>
-                    <td className="capitalize">{inv.status}</td>
-                    <td>{inv.created_by.name}</td>
+                    <td className="text-right tabular-nums text-slate-600">
+                      {inv.status === "cancelled" ? "—" : formatMoney(inv.status === "paid" ? 0 : balanceDue(inv), inv.currency)}
+                    </td>
+                    <td>
+                      <InvoiceStatusBadge status={inv.status} partlyPaid={Number(inv.paid_total ?? 0) > 0} />
+                    </td>
+                    <td className="whitespace-nowrap">{inv.created_by.name}</td>
                     <td className="whitespace-nowrap">{formatDate(inv.created_at)}</td>
                     <td className="text-right">
-                      <a className="btn-secondary btn-sm" href={`/api/invoices/${inv.id}/pdf`}>
-                        PDF
-                      </a>
+                      <div className="flex items-center justify-end gap-1">
+                        {user.can.manage_invoices ? <InvoiceActions invoice={inv} /> : null}
+                        <a className="btn-ghost btn-sm" href={`/api/invoices/${inv.id}/pdf`} title="Download PDF">
+                          PDF
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 ))}
