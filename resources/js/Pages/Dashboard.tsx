@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ChannelBadge, StatusBadge } from "@/components/ui/badges";
 import { Avatar } from "@/components/ui/avatar";
 import { LeadsTrendChart } from "@/components/charts/leads-trend-chart";
+import { useLiveReload } from "@/components/app-shell/live-provider";
 
 const RANGES = [7, 30, 90] as const;
 
@@ -15,6 +16,8 @@ export default function Dashboard({ dashboard, range }: { dashboard: DashboardDa
   const user = usePage<SharedProps>().props.auth.user!;
   const canAssign = user.can.assign_leads;
   const { stats: data, recent_leads: recentLeads, recent_chats: recentChats } = dashboard;
+  // Numbers and latest leads follow new leads live; the heavier totals refresh at most every 30s
+  useLiveReload(["dashboard"], 30_000);
 
   const now = new Date();
   const delta = data.previous > 0 ? (data.total - data.previous) / data.previous : null;

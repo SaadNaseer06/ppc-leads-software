@@ -36,6 +36,7 @@ export function LeadsTable({
   canDelete,
   canManageWebsites,
   emptyFiltered,
+  freshIds,
 }: {
   rows: LeadRowView[];
   assignees: Assignee[];
@@ -44,6 +45,8 @@ export function LeadsTable({
   canDelete?: boolean;
   canManageWebsites: boolean;
   emptyFiltered: boolean;
+  /** Rows that just arrived live, briefly highlighted */
+  freshIds?: Set<number>;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -270,7 +273,7 @@ export function LeadsTable({
               <tr
                 key={lead.id}
                 data-selected={visibleSelected.has(lead.id)}
-                className="cursor-pointer"
+                className={`cursor-pointer transition-colors duration-1000 ${freshIds?.has(lead.id) ? "bg-teal-50" : ""}`}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest("input,a,button")) return;
                   router.visit(`/leads/${lead.id}`);

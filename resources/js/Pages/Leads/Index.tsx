@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Head, Link, usePage } from "@inertiajs/react";
 import { Download } from "lucide-react";
 import type { LeadsPage, Lookups } from "@/lib/api-types";
@@ -7,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { LeadFiltersBar } from "./partials/lead-filters";
 import { LeadsTable, type LeadRowView } from "./partials/leads-table";
 import { CreateLeadButton } from "./partials/create-lead-dialog";
+import { useLiveReload } from "@/components/app-shell/live-provider";
 
 const PASSED_PARAMS = ["q", "status", "source", "channel", "website", "brand", "assignee", "from", "to", "size"];
 
@@ -23,6 +25,25 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
   const filters = page.filters;
   const pageSize = [25, 50, 100].includes(Number(one("size"))) ? Number(one("size")) : 50;
   const canAssign = user.can.assign_leads;
+
+  // The newest page updates itself as leads arrive or change (older pages keep the "new
+  // leads" pill, so rows don't shift while someone works through them)
+  const [fresh, setFresh] = useState<Set<number>>(new Set());
+  const known = useRef(new Set(page.leads.map((l) => l.id)));
+  const liveRefresh = useRef(false);
+  useLiveReload(["page"], 5_000, !one("cursor"), () => {
+    liveRefresh.current = true;
+  });
+  useEffect(() => {
+    const ids = page.leads.map((l) => l.id);
+    const added = liveRefresh.current ? ids.filter((id) => !known.current.has(id)) : [];
+    liveRefresh.current = false;
+    known.current = new Set(ids);
+    if (added.length === 0) return;
+    setFresh(new Set(added));
+    const timer = window.setTimeout(() => setFresh(new Set()), 6_000);
+    return () => window.clearTimeout(timer);
+  }, [page.leads]);
 
   const now = new Date();
   const rows: LeadRowView[] = page.leads.map((l) => ({
@@ -122,6 +143,7 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
         canDelete={user.can.delete_leads}
         canManageWebsites={user.can.manage_websites}
         emptyFiltered={Object.values(filters).some(Boolean)}
+        freshIds={fresh}
       />
 
       {page.prev_cursor || page.next_cursor ? (

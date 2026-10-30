@@ -13,9 +13,17 @@ const IDLE_POLL_MS = 30_000;
 const IDLE_AFTER_MS = 120_000;
 const SAFETY_POLL_MS = 60_000;
 
-const LiveContext = createContext<{ counts: LiveCounts; sync: () => void }>({
+type LiveValue = {
+  counts: LiveCounts;
+  sync: () => void;
+  /** Called whenever lead data changes; returns the unsubscribe function */
+  subscribe: (onChange: () => void) => () => void;
+};
+
+const LiveContext = createContext<LiveValue>({
   counts: { new_leads: 0, unassigned: 0, my_new: 0, active_chats: 0 },
   sync: () => {},
+  subscribe: () => () => {},
 });
 
 export function useLiveCounts() {
@@ -25,6 +33,38 @@ export function useLiveCounts() {
 /** Re-poll now, e.g. right after assigning leads so the sidebar badge updates */
 export function useLiveSync() {
   return useContext(LiveContext).sync;
+}
+
+/**
+ * Screens that show leads (the list, the dashboard) reload the given page props when leads
+ * change, at most once per `gapMs` so a burst of new leads costs one request. While such a
+ * screen is open, the "new leads" pill stays hidden: the new leads are already on screen.
+ */
+export function useLiveReload(only: string[], gapMs: number, enabled = true, onReload?: () => void) {
+  const { subscribe } = useContext(LiveContext);
+  const last = useRef(0);
+  const timer = useRef<number | null>(null);
+  const onReloadRef = useRef(onReload);
+  onReloadRef.current = onReload;
+  const props = only.join(",");
+
+  useEffect(() => {
+    if (!enabled) return;
+    const unsubscribe = subscribe(() => {
+      if (timer.current !== null) return;
+      timer.current = window.setTimeout(() => {
+        timer.current = null;
+        last.current = Date.now();
+        onReloadRef.current?.();
+        router.reload({ only: props.split(",") });
+      }, Math.max(0, last.current + gapMs - Date.now()));
+    });
+    return () => {
+      unsubscribe();
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      timer.current = null;
+    };
+  }, [enabled, subscribe, props, gapMs]);
 }
 
 /** The ping channels this user may follow (routes/channels.php) */
@@ -62,8 +102,19 @@ export function LiveProvider({
   const proven = useRef(false);
   const seen = useRef<string | null>(null);
   const pingTimer = useRef<number | null>(null);
+  const screens = useRef(new Set<() => void>());
+  const [watched, setWatched] = useState(false);
 
-  const poll = useCallback(async (fromTimer = false) => {
+  const subscribe = useCallback((onChange: () => void) => {
+    screens.current.add(onChange);
+    setWatched(true);
+    return () => {
+      screens.current.delete(onChange);
+      setWatched(screens.current.size > 0);
+    };
+  }, []);
+
+  const poll = useCallback(async (fromTimer = false, fromPing = false) => {
     if (document.visibilityState !== "visible") return;
     lastPoll.current = Date.now();
     try {
@@ -79,17 +130,23 @@ export function LiveProvider({
       const data = await res.json();
       // Lead counts only: a chat ending or going quiet changes active_chats without a ping
       const leads = `${data.new_leads}|${data.unassigned}|${data.my_new}`;
-      if (seen.current !== null && leads !== seen.current) {
+      const changed = seen.current !== null && leads !== seen.current;
+      if (changed) {
         lastChange.current = Date.now();
         if (fromTimer && Date.now() - lastPing.current > 3000) proven.current = false;
       }
-      seen.current = leads;
+      // A screen that shows leads refreshes itself, so they no longer count as unseen
+      const shown = screens.current.size > 0;
+      if (shown && data.new_leads > 0) since.current = data.server_time;
+      seen.current = shown ? `0|${data.unassigned}|${data.my_new}` : leads;
       setCounts({
-        new_leads: data.new_leads,
+        new_leads: shown ? 0 : data.new_leads,
         unassigned: data.unassigned,
         my_new: data.my_new,
         active_chats: data.active_chats,
       });
+      // A ping can mean a change the counts don't show (a status change, a reassignment)
+      if (changed || fromPing) for (const onChange of screens.current) onChange();
     } catch {
       // Offline or server restarting: try again on the next tick
     }
@@ -131,7 +188,7 @@ export function LiveProvider({
       if (pingTimer.current !== null) return;
       pingTimer.current = window.setTimeout(() => {
         pingTimer.current = null;
-        void poll();
+        void poll(false, true);
       }, 500);
     };
     const names = channelKey.split(",");
@@ -156,12 +213,12 @@ export function LiveProvider({
     router.reload();
   }
 
-  const value = useMemo(() => ({ counts, sync: () => void poll() }), [counts, poll]);
+  const value = useMemo(() => ({ counts, sync: () => void poll(), subscribe }), [counts, poll, subscribe]);
 
   return (
     <LiveContext.Provider value={value}>
       {children}
-      {counts.new_leads > 0 ? (
+      {counts.new_leads > 0 && !watched ? (
         <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4">
           <button
             type="button"

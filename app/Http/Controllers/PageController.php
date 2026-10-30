@@ -32,7 +32,8 @@ class PageController extends Controller
         $request->query->set('range', $range);
 
         return Inertia::render('Dashboard', [
-            'dashboard' => $this->payload(DashboardController::class, 'show'),
+            // Lazy: a live refresh reloads only this prop
+            'dashboard' => fn () => $this->payload(DashboardController::class, 'show'),
             'range' => $range,
         ]);
     }
@@ -40,8 +41,9 @@ class PageController extends Controller
     public function leads(Request $request): Response
     {
         return Inertia::render('Leads/Index', [
-            'page' => $this->payload(LeadController::class, 'index'),
-            'lookups' => $this->payload(DashboardController::class, 'lookups'),
+            // Lazy: a live refresh reloads only the list, not the pickers
+            'page' => fn () => $this->payload(LeadController::class, 'index'),
+            'lookups' => fn () => $this->payload(DashboardController::class, 'lookups'),
             'query' => (object) array_filter($request->query(), 'is_string'),
         ]);
     }
