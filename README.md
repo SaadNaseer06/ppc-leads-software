@@ -26,8 +26,9 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
 - **Assignment.** Assign one lead or hundreds at once. Each brand can rotate new leads round-robin across its
   Front Sales reps (safe under concurrent traffic). The assign menu shows each rep's open-lead workload.
   Deactivating a user signs them out and returns their open leads to the unassigned queue.
-- **Live dashboard.** Sidebar badges and a "new leads" pill update every 20 seconds without reloading. KPIs show
-  PPC share, conversion rate and the unassigned queue, with charts per day, per website and per rep.
+- **Live dashboard.** Sidebar badges and a "new leads" pill update the moment a lead arrives (Pusher pings), with
+  polling only as a fallback. KPIs show PPC share, conversion rate and the unassigned queue, with charts per day,
+  per website and per rep.
 - **Lead timeline.** Creation, repeat submissions, assignments, status changes, notes and chats. Repeat submissions
   from the same email/phone within 30 days merge into the existing lead instead of duplicating it.
 - **Roles.** Super Admin, Admin, Front Sales, Up Sales, Finance, Developer. Each user is scoped to their brands, and

@@ -1,9 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
-import type { LiveCounts } from "@/types";
+import type { CurrentUser, LiveCounts } from "@/types";
 import { ArrowUp } from "lucide-react";
+import { getEcho } from "@/lib/echo";
 
-const POLL_MS = 20_000;
+// The server pings open dashboards through Pusher whenever lead counts change, so polling is
+// only a fallback: every 10s until a ping has proven realtime works (30s once nothing has
+// changed for a couple of minutes), then once a minute as a safety net. If a poll ever finds a
+// change no ping announced, it goes back to the faster fallback.
+const POLL_MS = 10_000;
+const IDLE_POLL_MS = 30_000;
+const IDLE_AFTER_MS = 120_000;
+const SAFETY_POLL_MS = 60_000;
+
 const LiveContext = createContext<{ counts: LiveCounts; sync: () => void }>({
   counts: { new_leads: 0, unassigned: 0, my_new: 0, active_chats: 0 },
   sync: () => {},
@@ -18,25 +27,45 @@ export function useLiveSync() {
   return useContext(LiveContext).sync;
 }
 
+/** The ping channels this user may follow (routes/channels.php) */
+function leadChannels(user: CurrentUser): string[] {
+  const own = `leads.user.${user.id}`;
+  if (user.can.manage_brands) return ["leads.all", own];
+  if (user.role === "ADMIN" || user.role === "FINANCE") return [...user.brand_ids.map((id) => `leads.brand.${id}`), own];
+  return [own];
+}
+
 /**
- * Polls /api/live while the tab is visible. New leads show a "refresh" pill
+ * Keeps the sidebar badges and the "new leads" pill current. New leads show a pill
  * instead of reshuffling the page under the user's cursor.
  */
 export function LiveProvider({
   initial,
   serverTime,
+  user,
+  realtime,
   children,
 }: {
   initial: LiveCounts;
   serverTime: string;
+  user: CurrentUser;
+  realtime: { key: string; cluster: string } | null;
   children: React.ReactNode;
 }) {
   const [counts, setCounts] = useState<LiveCounts>({ ...initial, new_leads: 0 });
   const since = useRef(serverTime);
   const baseTitle = useRef<string | null>(null);
+  const lastPoll = useRef(Date.now());
+  const lastChange = useRef(Date.now());
+  const lastPing = useRef(0);
+  const connected = useRef(false);
+  const proven = useRef(false);
+  const seen = useRef<string | null>(null);
+  const pingTimer = useRef<number | null>(null);
 
-  const poll = useCallback(async () => {
+  const poll = useCallback(async (fromTimer = false) => {
     if (document.visibilityState !== "visible") return;
+    lastPoll.current = Date.now();
     try {
       const res = await fetch(`/api/live?since=${encodeURIComponent(since.current)}`, {
         headers: { Accept: "application/json" },
@@ -48,6 +77,13 @@ export function LiveProvider({
       }
       if (!res.ok) return;
       const data = await res.json();
+      // Lead counts only: a chat ending or going quiet changes active_chats without a ping
+      const leads = `${data.new_leads}|${data.unassigned}|${data.my_new}`;
+      if (seen.current !== null && leads !== seen.current) {
+        lastChange.current = Date.now();
+        if (fromTimer && Date.now() - lastPing.current > 3000) proven.current = false;
+      }
+      seen.current = leads;
       setCounts({
         new_leads: data.new_leads,
         unassigned: data.unassigned,
@@ -60,7 +96,11 @@ export function LiveProvider({
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(poll, POLL_MS);
+    const timer = setInterval(() => {
+      const quiet = Date.now() - lastChange.current > IDLE_AFTER_MS;
+      const every = proven.current ? SAFETY_POLL_MS : quiet ? IDLE_POLL_MS : POLL_MS;
+      if (Date.now() - lastPoll.current >= every - 250) void poll(true);
+    }, 2_000);
     const onVisible = () => {
       if (document.visibilityState === "visible") void poll();
     };
@@ -70,6 +110,40 @@ export function LiveProvider({
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [poll]);
+
+  const channelKey = leadChannels(user).join(",");
+  useEffect(() => {
+    if (!realtime?.key) return;
+    const echo = getEcho(realtime.key, realtime.cluster);
+    if (!echo) return;
+    const connection = echo.connector.pusher.connection;
+    const onState = () => {
+      connected.current = connection.state === "connected";
+      if (!connected.current) proven.current = false;
+    };
+    onState();
+    connection.bind("state_change", onState);
+
+    // Pings carry no data: a burst of them (a bulk action, a busy minute) causes one poll
+    const onPing = () => {
+      lastPing.current = Date.now();
+      proven.current = connected.current;
+      if (pingTimer.current !== null) return;
+      pingTimer.current = window.setTimeout(() => {
+        pingTimer.current = null;
+        void poll();
+      }, 500);
+    };
+    const names = channelKey.split(",");
+    for (const name of names) echo.private(name).listen(".LeadsChanged", onPing);
+    return () => {
+      connection.unbind("state_change", onState);
+      for (const name of names) echo.leave(name);
+      if (pingTimer.current !== null) window.clearTimeout(pingTimer.current);
+      pingTimer.current = null;
+      proven.current = false;
+    };
+  }, [realtime?.key, realtime?.cluster, channelKey, poll]);
 
   useEffect(() => {
     if (baseTitle.current === null) baseTitle.current = document.title.replace(/^\(\d+\+?\)\s*/, "");

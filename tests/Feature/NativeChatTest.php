@@ -3,12 +3,16 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Events\ChatMessageSent;
+use App\Events\LeadsChanged;
 use App\Models\Conversation;
+use App\Models\Lead;
 use App\Services\NativeChatService;
 use Illuminate\Broadcasting\Broadcasters\Broadcaster;
 use Illuminate\Broadcasting\BroadcastException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class NativeChatTest extends TestCase
@@ -92,15 +96,67 @@ class NativeChatTest extends TestCase
         $brand = $this->brand();
         $auth = fn (string $channel) => $this->postJson('/broadcasting/auth', ['socket_id' => '1234.5678', 'channel_name' => $channel]);
 
-        $this->actingAs($this->user(Role::FrontSales, [$brand]));
+        $rep = $this->user(Role::FrontSales, [$brand]);
+        $other = $this->user(Role::FrontSales, [$brand]);
+        $this->actingAs($rep);
         $auth("private-chats.{$brand->id}")->assertForbidden();
         $auth('private-chats.all')->assertForbidden();
+        // Reps follow only their own chat and lead feeds
+        $auth("private-chats.user.{$rep->id}")->assertOk();
+        $auth("private-chats.user.{$other->id}")->assertForbidden();
+        $auth("private-leads.user.{$rep->id}")->assertOk();
+        $auth("private-leads.user.{$other->id}")->assertForbidden();
+        $auth("private-leads.brand.{$brand->id}")->assertForbidden();
+        $auth('private-leads.all')->assertForbidden();
 
         $this->actingAs($this->user(Role::Admin, [$brand]));
         $auth("private-chats.{$brand->id}")->assertOk();
         $auth('private-chats.all')->assertForbidden();
+        $auth("private-leads.brand.{$brand->id}")->assertOk();
+        $auth('private-leads.brand.'.$this->brand()->id)->assertForbidden();
 
         $this->actingAs($this->user(Role::SuperAdmin));
         $auth('private-chats.all')->assertOk();
+        $auth('private-leads.all')->assertOk();
+    }
+
+    public function test_chat_events_carry_the_inbox_row_and_reach_the_assigned_rep(): void
+    {
+        $brand = $this->brand();
+        $site = $this->website($brand);
+        $rep = $this->user(Role::FrontSales, [$brand]);
+        $chat = app(NativeChatService::class);
+        $conversation = $chat->session($site, null)['conversation'];
+        $chat->updateVisitor($conversation, 'Ada', null);
+        $chat->visitorMessage($conversation, 'Hi');
+        Lead::whereKey($conversation->fresh()->lead_id)->update(['assignee_id' => $rep->id]);
+
+        $long = $conversation->messages()->create(['sender_type' => 'visitor', 'body' => str_repeat('é', 5000), 'sent_at' => now()]);
+        $event = new ChatMessageSent($long->fresh('conversation'));
+        $channels = array_map(fn ($c) => $c->name, $event->broadcastOn());
+        $payload = $event->broadcastWith();
+
+        $this->assertContains("private-chats.user.{$rep->id}", $channels);
+        $this->assertContains("private-chats.{$brand->id}", $channels);
+        $this->assertSame('Ada', $payload['conversation']['display_name']);
+        // Pusher caps events at 10 KB: long messages are cut and flagged so clients fetch them
+        $this->assertTrue($payload['truncated']);
+        $this->assertLessThan(10_000, strlen(json_encode($payload)));
+    }
+
+    public function test_lead_changes_ping_the_dashboards_that_show_them(): void
+    {
+        Event::fake([LeadsChanged::class]);
+        $brand = $this->brand();
+        $site = $this->website($brand);
+        $rep = $this->user(Role::FrontSales, [$brand]);
+
+        $leadId = $this->postJson("/api/intake/{$site->public_key}", ['email' => 'ping@example.com'])->assertCreated()->json('lead_id');
+        Event::assertDispatched(LeadsChanged::class, fn ($e) => in_array("leads.brand.{$brand->id}", $e->channels, true)
+            && in_array('leads.all', $e->channels, true));
+
+        $this->actingAs($this->user(Role::Admin, [$brand]));
+        $this->patchJson("/api/leads/{$leadId}", ['assignee_id' => $rep->id])->assertOk();
+        Event::assertDispatched(LeadsChanged::class, fn ($e) => in_array("leads.user.{$rep->id}", $e->channels, true));
     }
 }

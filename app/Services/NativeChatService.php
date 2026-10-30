@@ -259,14 +259,19 @@ class NativeChatService
         }
     }
 
-    /** Realtime is best-effort: the message is already saved and polling delivers it if Pusher is down */
+    /**
+     * Sent after the response, so Pusher latency never slows a visitor's or an agent's send.
+     * Best-effort: the message is already saved, and polling delivers it if Pusher is down.
+     */
     private function broadcast(ConversationMessage $message): void
     {
-        try {
-            event(new ChatMessageSent($message->fresh('conversation')));
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        defer(function () use ($message) {
+            try {
+                event(new ChatMessageSent($message->fresh(['conversation.website', 'conversation.lead'])));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     public function hashToken(string $token): string

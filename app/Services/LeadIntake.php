@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
  */
 class LeadIntake
 {
-    public function __construct(private LeadAssignment $assignment) {}
+    public function __construct(private LeadAssignment $assignment, private LiveSignal $live) {}
 
     /**
      * @param  array{name?: ?string, email?: ?string, phone?: ?string, company?: ?string, message?: ?string,
@@ -56,6 +56,7 @@ class LeadIntake
 
             if ($existing) {
                 $this->recordResubmission($existing, $website, $source, $email, $phone, $company, $message, $input, $attribution, $extra);
+                $this->live->leads($brandId, $existing->assignee_id);
 
                 return ['lead_id' => $existing->id, 'duplicate' => true, 'assignee_id' => $existing->assignee_id];
             }
@@ -114,6 +115,8 @@ class LeadIntake
                 report($e);
             }
         }
+
+        $this->live->leads($brandId, $assigneeId);
 
         return ['lead_id' => $lead->id, 'duplicate' => false, 'assignee_id' => $assigneeId];
     }

@@ -29,12 +29,28 @@ const FILTERS = [
   { key: "ticket", label: "Offline messages" },
 ] as const;
 
-// Without realtime the inbox polls every 5s. With Pusher connected, events trigger the
-// refreshes and polling is only a slow safety net (sales reps have no inbox channel, so
-// theirs is shorter): keeps the server quiet on shared hosting with many agents online.
-const POLL_MS = 5_000;
-const SAFETY_POLL_MS = 30_000;
-const REP_SAFETY_POLL_MS = 10_000;
+// Pusher events carry the updated inbox row, so an open inbox changes in place without asking
+// the server. Polling is only the fallback: every 4s until an event has proven realtime works
+// (a connected socket alone doesn't mean the server broadcasts), 15s once nothing has changed
+// for a couple of minutes, and a once-a-minute safety net after that. If a poll finds activity
+// no event announced, it drops back to the fallback.
+const POLL_MS = 4_000;
+const IDLE_POLL_MS = 15_000;
+const IDLE_AFTER_MS = 120_000;
+const SAFETY_POLL_MS = 60_000;
+/** Rows per inbox page (ChatController::PAGE) */
+const PAGE = 30;
+
+type ChatEvent = {
+  conversation_id: number;
+  status?: string;
+  truncated?: boolean;
+  message?: ChatMessage;
+  conversation?: ConversationRow | null;
+};
+
+/** Changes whenever a conversation gets a message or a new one appears */
+const activityOf = (rows: ConversationRow[]) => rows.map((c) => `${c.id}:${c.message_count}`).join(",");
 
 type SelectedChat = NonNullable<ChatsData["selected"]>;
 
@@ -76,18 +92,25 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const selectedIdRef = useRef<number | null>(initial.selected?.id ?? null);
   const [now, setNow] = useState(() => new Date());
   const lastFetch = useRef(Date.now());
+  const lastChange = useRef(Date.now());
+  const connected = useRef(false);
   const realtime = useRef(false);
+  const lastEventAt = useRef(0);
   const refreshTimer = useRef<number | null>(null);
-  // Admins follow their brands' inbox feeds, Super Admin / Developer the global one
+  const listRef = useRef(list);
+  const selectedRef = useRef(selected);
+  // Super Admin / Developer follow the global inbox feed, admins their brands', reps their own
   const inboxChannels = !user.can.assign_leads
-    ? ""
+    ? `chats.user.${user.id}`
     : user.can.manage_brands
       ? "chats.all"
       : user.brand_ids.map((id) => `chats.${id}`).join(",");
 
   selectedIdRef.current = selected?.id ?? null;
+  selectedRef.current = selected;
 
   const applyPayload = useCallback((data: ChatsData, opts?: { replaceMessages?: boolean }) => {
+    listRef.current = data.conversations;
     setList(data.conversations);
     setHasMore(data.has_more);
     setUnlinked(data.unlinked);
@@ -117,7 +140,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     setDraft("");
   }, [initial, applyPayload]);
 
-  const fetchChats = useCallback(async () => {
+  const fetchChats = useCallback(async (fromTimer = false) => {
     if (document.visibilityState !== "visible") return;
     lastFetch.current = Date.now();
     const q = new URLSearchParams();
@@ -135,6 +158,11 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       }
       if (!res.ok) return;
       const data = (await res.json()) as ChatsData;
+      // Events keep the list current, so a difference here is something realtime missed
+      if (activityOf(data.conversations) !== activityOf(listRef.current)) {
+        lastChange.current = Date.now();
+        if (fromTimer && Date.now() - lastEventAt.current > 3000) realtime.current = false;
+      }
       applyPayload(data);
       setNow(new Date());
     } catch {
@@ -151,15 +179,52 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     }, 400);
   }, [fetchChats]);
 
+  /** Moves a conversation's updated row to the top of the inbox, without asking the server */
+  const upsertRow = useCallback(
+    (row: ConversationRow) => {
+      const prev = listRef.current;
+      const old = prev.find((c) => c.id === row.id);
+      // On an older page, or a tab it doesn't belong to, a chat that isn't listed stays out
+      if (!old && (params.before || (kind && row.kind !== kind))) return;
+      const next = [row, ...prev.filter((c) => c.id !== row.id)].slice(0, Math.max(PAGE, prev.length));
+      listRef.current = next;
+      setList(next);
+      const delta = (row.is_live ? 1 : 0) - (old?.is_live ? 1 : 0);
+      if (delta) setOpenCount((n) => Math.max(0, n + delta));
+      setSelected((s) => (s && s.id === row.id ? { ...s, ...row } : s));
+      setNow(new Date());
+    },
+    [kind, params.before]
+  );
+
+  // A Pusher event arrived: the server -> Pusher -> browser path demonstrably works
+  const onRealtimeEvent = useCallback(
+    (payload: ChatEvent) => {
+      lastEventAt.current = Date.now();
+      lastChange.current = Date.now();
+      realtime.current = connected.current;
+      const isSelected = payload.conversation_id === selectedIdRef.current;
+      if (payload.conversation) upsertRow(payload.conversation);
+      if (isSelected && payload.message) {
+        const m = payload.message;
+        setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+      }
+      // Only these need the server: a long message's full text, or a new chat's lead
+      if (!payload.conversation || payload.truncated || (isSelected && !selectedRef.current?.lead)) refreshSoon();
+    },
+    [upsertRow, refreshSoon]
+  );
+
   useEffect(() => () => {
     if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
   }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      const every = !realtime.current ? POLL_MS : inboxChannels ? SAFETY_POLL_MS : REP_SAFETY_POLL_MS;
-      if (Date.now() - lastFetch.current >= every - 250) void fetchChats();
-    }, POLL_MS);
+      const quiet = Date.now() - lastChange.current > IDLE_AFTER_MS;
+      const every = realtime.current ? SAFETY_POLL_MS : quiet ? IDLE_POLL_MS : POLL_MS;
+      if (Date.now() - lastFetch.current >= every - 250) void fetchChats(true);
+    }, 1_000);
     const onVisible = () => {
       if (document.visibilityState === "visible") void fetchChats();
     };
@@ -168,20 +233,22 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [fetchChats, inboxChannels]);
+  }, [fetchChats]);
 
-  // Track whether Pusher is actually connected; if it drops, polling speeds back up
+  // If the Pusher connection drops, polling speeds back up until an event proves it again
   useEffect(() => {
     if (!pusher?.key) return;
     const connection = getEcho(pusher.key, pusher.cluster)?.connector.pusher.connection;
     if (!connection) return;
     const update = () => {
-      realtime.current = connection.state === "connected";
+      connected.current = connection.state === "connected";
+      if (!connected.current) realtime.current = false;
     };
     update();
     connection.bind("state_change", update);
     return () => {
       connection.unbind("state_change", update);
+      connected.current = false;
       realtime.current = false;
     };
   }, [pusher?.key, pusher?.cluster]);
@@ -197,10 +264,8 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
 
     const channelName = `chat.${selected.id}`;
     const channel = echo.private(channelName);
-    const handler = (payload: { message?: ChatMessage }) => {
-      if (!payload?.message) return;
-      setMessages((prev) => (prev.some((m) => m.id === payload.message!.id) ? prev : [...prev, payload.message!]));
-      refreshSoon();
+    const handler = (payload: ChatEvent) => {
+      if (payload?.message) onRealtimeEvent(payload);
     };
     channel.listen(".ChatMessageSent", handler);
 
@@ -208,7 +273,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       channel.stopListening(".ChatMessageSent", handler);
       echo.leave(channelName);
     };
-  }, [selected?.id, pusher?.key, pusher?.cluster, refreshSoon]);
+  }, [selected?.id, pusher?.key, pusher?.cluster, onRealtimeEvent]);
 
   useEffect(() => {
     if (!pusher?.key || !inboxChannels) return;
@@ -216,7 +281,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     if (!echo) return;
 
     const names = inboxChannels.split(",");
-    const handler = () => refreshSoon();
+    const handler = (payload: ChatEvent) => onRealtimeEvent(payload);
     for (const name of names) {
       echo.private(name).listen(".ChatMessageSent", handler);
     }
@@ -225,7 +290,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
         echo.leave(name);
       }
     };
-  }, [pusher?.key, pusher?.cluster, inboxChannels, refreshSoon]);
+  }, [pusher?.key, pusher?.cluster, inboxChannels, onRealtimeEvent]);
 
   const query = (extra: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -246,9 +311,15 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       toast.error(res.error);
       return;
     }
-    setMessages((prev) => (prev.some((m) => m.id === res.data.message.id) ? prev : [...prev, res.data.message]));
+    const message = res.data.message;
+    setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
     setDraft("");
-    void fetchChats();
+    lastChange.current = Date.now();
+    // Update our own inbox row now; the realtime event (or next poll) confirms it
+    const row = listRef.current.find((c) => c.id === selected.id);
+    if (row) {
+      upsertRow({ ...row, last_message: message.body, last_message_at: message.sent_at, message_count: row.message_count + 1 });
+    }
   }
 
   async function endChat() {

@@ -80,6 +80,19 @@ class Conversation extends Model
             && $this->last_message_at?->gt(now()->subHours(config('ppc.active_chat_hours')));
     }
 
+    /** One inbox row: the Chats list, and the realtime event that updates it in place */
+    public function toInboxRow(): array
+    {
+        return [
+            ...$this->only(['id', 'kind', 'provider', 'status', 'last_message', 'last_message_at', 'message_count', 'property_name']),
+            'display_name' => $this->displayName(),
+            'visitor_email' => $this->visitor_email,
+            'is_live' => $this->isLive(),
+            'website' => $this->website?->only(['id', 'name']),
+            'can_reply' => $this->provider === 'native' && $this->status === 'open',
+        ];
+    }
+
     /** Tawk names anonymous visitors like "V1561719148780935" */
     public static function realVisitorName(?string $name): ?string
     {

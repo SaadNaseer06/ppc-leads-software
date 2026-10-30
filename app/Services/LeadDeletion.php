@@ -14,6 +14,8 @@ use Illuminate\Validation\ValidationException;
  */
 class LeadDeletion
 {
+    public function __construct(private LiveSignal $live) {}
+
     /**
      * @return array{deleted: int, skipped_invoices: int}
      */
@@ -81,5 +83,6 @@ class LeadDeletion
             // Activities cascade; conversations keep history with lead_id null
             $lead->delete();
         });
+        $this->live->leads($lead->brand_id, $lead->assignee_id);
     }
 }

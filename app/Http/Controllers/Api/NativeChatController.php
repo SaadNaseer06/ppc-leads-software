@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Website;
 use App\Services\NativeChatService;
+use App\Support\Realtime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Pusher\Pusher;
@@ -144,21 +145,12 @@ class NativeChatController extends Controller
         return response()->json(json_decode($auth, true));
     }
 
+    /** Null when the server doesn't broadcast: the widget then just polls */
     private function pusherPublicConfig(): ?array
     {
-        $key = config('broadcasting.connections.pusher.key');
-        if (! $key || config('broadcasting.default') === 'null' || config('broadcasting.default') === 'log') {
-            // Still return key/cluster when set so the widget can try; poll works either way
-            if (! $key) {
-                return null;
-            }
-        }
+        $config = Realtime::config();
 
-        return [
-            'key' => $key,
-            'cluster' => config('broadcasting.connections.pusher.options.cluster') ?: 'mt1',
-            'auth_endpoint' => url('/api/chat/auth'),
-        ];
+        return $config ? [...$config, 'auth_endpoint' => url('/api/chat/auth')] : null;
     }
 
     private function pusherClient(): ?Pusher

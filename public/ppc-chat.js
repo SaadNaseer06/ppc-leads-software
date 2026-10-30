@@ -45,9 +45,13 @@
           .filter(Boolean)
           .slice(0, 6);
   var STORAGE_KEY = "ppc_chat_token_" + siteKey;
-  // Poll fast only when realtime (Pusher) isn't delivering; otherwise a slow safety net
-  var POLL_FAST_MS = 4000;
-  var POLL_SLOW_MS = 30000;
+  // Replies arrive through Pusher. Polling is the fallback: every 3s until a Pusher event has
+  // proven realtime works (a connected socket alone doesn't mean the server broadcasts), 10s
+  // once the chat has been quiet for a minute, and a once-a-minute safety net after that
+  var POLL_FAST_MS = 3000;
+  var POLL_IDLE_MS = 10000;
+  var IDLE_AFTER_MS = 60000;
+  var POLL_SAFETY_MS = 60000;
   var CONTACT_SKIP_KEY = "ppc_chat_contact_skip_" + siteKey;
 
   var state = {
@@ -60,7 +64,9 @@
     channel: null,
     pollTimer: null,
     lastPoll: 0,
+    lastChange: 0,
     realtime: false,
+    eventSeen: false,
     sending: false,
     session: null,
     unread: 0,
@@ -438,12 +444,13 @@
     opts = opts || {};
     if (!m || !m.id) return;
     for (var i = 0; i < state.messages.length; i++) {
-      if (state.messages[i].id === m.id) return;
+      if (state.messages[i].id === m.id) return false;
     }
     state.messages.push(m);
     state.messages.sort(function (a, b) {
       return a.id - b.id;
     });
+    state.lastChange = Date.now();
 
     var isAgent = m.sender_type === "agent";
     if (isAgent) {
@@ -460,18 +467,26 @@
 
     renderMessages({ highlightId: isAgent ? m.id : null });
     setComposerVisible();
+    return true;
   }
 
-  function pollOnce() {
+  /** expected: we know there is something to fetch (a cut-off long message), not a miss */
+  function pollOnce(expected) {
     if (!state.visitorToken) return;
     state.lastPoll = Date.now();
     var since = state.messages.length ? state.messages[state.messages.length - 1].id : 0;
     api("/api/chat/messages?visitor_token=" + encodeURIComponent(state.visitorToken) + "&since_id=" + since)
       .then(function (data) {
         state.status = data.status || state.status;
+        var missed = false;
         (data.messages || []).forEach(function (m) {
-          upsertMessage(m);
+          if (upsertMessage(m)) missed = true;
         });
+        // Realtime should have delivered that: stop trusting it until an event arrives again
+        if (missed && state.realtime && !expected) {
+          state.realtime = false;
+          state.eventSeen = false;
+        }
         setComposerVisible();
       })
       .catch(function () {});
@@ -480,11 +495,13 @@
   function startPolling() {
     if (state.pollTimer) return;
     state.lastPoll = Date.now();
+    state.lastChange = Date.now();
     state.pollTimer = setInterval(function () {
       if (state.status !== "open" || document.visibilityState === "hidden") return;
-      var every = state.realtime ? POLL_SLOW_MS : POLL_FAST_MS;
+      var quiet = Date.now() - state.lastChange > IDLE_AFTER_MS;
+      var every = state.realtime ? POLL_SAFETY_MS : quiet ? POLL_IDLE_MS : POLL_FAST_MS;
       if (Date.now() - state.lastPoll >= every - 250) pollOnce();
-    }, POLL_FAST_MS);
+    }, 1000);
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "visible" && state.status === "open") pollOnce();
     });
@@ -523,17 +540,21 @@
         state.pusher = client;
         var channel = client.subscribe("private-chat." + state.conversationId);
         state.channel = channel;
-        channel.bind("ChatMessageSent", function (payload) {
-          if (payload && payload.message) {
-            if (payload.message.sender_type === "agent" && state.open) flashTyping(false);
-            if (payload.status) state.status = payload.status;
-            upsertMessage(payload.message);
-          }
-        });
         var subscribed = false;
         var syncRealtime = function () {
-          state.realtime = subscribed && client.connection.state === "connected";
+          state.realtime = subscribed && state.eventSeen && client.connection.state === "connected";
         };
+        channel.bind("ChatMessageSent", function (payload) {
+          if (payload && payload.message) {
+            state.eventSeen = true;
+            syncRealtime();
+            if (payload.message.sender_type === "agent" && state.open) flashTyping(false);
+            if (payload.status) state.status = payload.status;
+            // A long message arrives cut short (Pusher size limit): fetch the full text instead
+            if (payload.truncated) pollOnce(true);
+            else upsertMessage(payload.message);
+          }
+        });
         channel.bind("pusher:subscription_succeeded", function () {
           subscribed = true;
           syncRealtime();
@@ -601,6 +622,7 @@
     state.pusher = null;
     state.channel = null;
     state.realtime = false;
+    state.eventSeen = false;
     state.session = null;
     state.visitorToken = null;
     state.conversationId = null;

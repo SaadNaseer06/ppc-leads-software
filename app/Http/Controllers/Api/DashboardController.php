@@ -40,7 +40,7 @@ class DashboardController extends Controller
         ]);
     }
 
-    /** Polled by the dashboard shell every 20s so new leads and chats appear without a refresh */
+    /** Polled by the dashboard shell every 10s so new leads and chats appear without a refresh */
     public function live(Request $request, LiveCounts $live): JsonResponse
     {
         $since = null;

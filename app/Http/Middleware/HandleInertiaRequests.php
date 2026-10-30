@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Services\LiveCounts;
 use App\Services\TeamDirectory;
+use App\Support\Realtime;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -35,6 +36,8 @@ class HandleInertiaRequests extends Middleware
             'app' => [
                 'env' => app()->environment('production') ? 'production' : (app()->environment('staging') ? 'staging' : 'development'),
                 'timezone' => config('ppc.report_timezone'),
+                // Pusher settings for live badges and chats (null: the server doesn't broadcast)
+                'realtime' => Realtime::config(),
             ],
             // Starting values for the sidebar badges; the browser polls /api/live after that
             'live' => fn () => $user

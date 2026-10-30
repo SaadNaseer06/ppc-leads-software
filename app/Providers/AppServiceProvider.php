@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\LiveSignal;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -11,7 +12,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // One per request: collects every lead change, then pings dashboards once
+        $this->app->scoped(LiveSignal::class);
     }
 
     public function boot(): void

@@ -71,7 +71,7 @@ export function LeadsTable({
 
   async function runBulk(
     body: Record<string, unknown>,
-    success: (data: { updated: number; skipped_invoices?: number }) => string
+    success: (data: { updated: number; deleted?: number; skipped_invoices?: number }) => string
   ) {
     setBusy(true);
     const res = await apiRequest<{ updated: number; deleted?: number; skipped_invoices?: number }>("/api/leads/bulk", {

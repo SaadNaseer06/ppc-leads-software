@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Services\NativeChatService;
 use App\Services\TeamDirectory;
+use App\Support\Realtime;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -73,10 +74,7 @@ class ChatController extends Controller
             'unlinked' => $user->hasGlobalAccess()
                 ? Conversation::whereNull('website_id')->whereNotNull('property_id')->count()
                 : 0,
-            'pusher' => [
-                'key' => config('broadcasting.connections.pusher.key'),
-                'cluster' => config('broadcasting.connections.pusher.options.cluster') ?: 'mt1',
-            ],
+            'pusher' => Realtime::config(),
         ]);
     }
 
@@ -112,13 +110,6 @@ class ChatController extends Controller
 
     private function row(Conversation $c): array
     {
-        return [
-            ...$c->only(['id', 'kind', 'provider', 'status', 'last_message', 'last_message_at', 'message_count', 'property_name']),
-            'display_name' => $c->displayName(),
-            'visitor_email' => $c->visitor_email,
-            'is_live' => $c->isLive(),
-            'website' => $c->website?->only(['id', 'name']),
-            'can_reply' => $c->provider === 'native' && $c->status === 'open',
-        ];
+        return $c->toInboxRow();
     }
 }

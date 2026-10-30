@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 
 class LeadAssignment
 {
+    public function __construct(private LiveSignal $live) {}
+
     /**
      * Assigns (or unassigns, when $toUserId is null) one or many leads in a single
      * transaction and records a timeline entry for every lead that changed.
@@ -64,6 +66,7 @@ class LeadAssignment
             ])->values()->all());
         });
 
+        $this->live->leads($changed->pluck('brand_id')->unique()->all(), [$toUserId, ...$changed->pluck('assignee_id')->unique()->all()]);
         ActivityLog::record($actorId, $changed->count() > 1 ? 'lead.bulk_assign' : 'lead.assign', 'Lead',
             $changed->count() === 1 ? $changed->first()->id : null,
             ['to_user_id' => $toUserId, 'count' => $changed->count(), 'reason' => $reason]);
@@ -104,6 +107,7 @@ class LeadAssignment
                 'type' => 'assigned',
                 'data' => ['from_user_id' => null, 'to_user_id' => $next, 'reason' => 'auto_round_robin'],
             ]);
+            $this->live->leads($lead->brand_id, $next);
 
             return $next;
         }, attempts: 5);
@@ -129,6 +133,7 @@ class LeadAssignment
             ])->values()->all());
         });
         ActivityLog::record($actorId, 'lead.bulk_status', 'Lead', null, ['status' => $status->value, 'count' => $leads->count()]);
+        $this->live->leads($leads->pluck('brand_id')->unique()->all(), $leads->pluck('assignee_id')->unique()->all());
 
         if ($status === LeadStatus::Converted) {
             // Same hand-off as a single conversion, batched into one assignment per Up Sales rep
@@ -188,6 +193,7 @@ class LeadAssignment
                 'data' => ['from' => $from, 'to' => $status->value],
             ]);
         });
+        $this->live->leads($lead->brand_id, $lead->assignee_id);
 
         if ($status === LeadStatus::Converted) {
             // A lead already with Up Sales stays with them unless someone else is picked

@@ -38,6 +38,6 @@ export type LiveCounts = {
 /** Props every page receives (App\Http\Middleware\HandleInertiaRequests::share) */
 export type SharedProps = {
   auth: { user: CurrentUser | null };
-  app: { env: string; timezone: string };
+  app: { env: string; timezone: string; realtime: { key: string; cluster: string } | null };
   live: (LiveCounts & { server_time: string }) | null;
 };

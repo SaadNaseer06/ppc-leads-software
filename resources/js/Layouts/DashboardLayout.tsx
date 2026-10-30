@@ -12,7 +12,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   if (!user || !live) return <>{children}</>;
 
   return (
-    <LiveProvider initial={live} serverTime={live.server_time}>
+    <LiveProvider initial={live} serverTime={live.server_time} user={user} realtime={app.realtime}>
       <div className="min-h-screen lg:pl-64">
         <Sidebar
           items={navItemsFor(user)}
