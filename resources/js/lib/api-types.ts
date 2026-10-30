@@ -131,6 +131,8 @@ export type ConversationRow = {
   provider: string;
   status: string;
   display_name: string;
+  visitor_email: string | null;
+  is_live: boolean;
   last_message: string | null;
   last_message_at: string;
   message_count: number;
@@ -144,6 +146,7 @@ export type ChatsData = {
   has_more: boolean;
   selected:
     | (ConversationRow & {
+        visitor_name: string | null;
         visitor_email: string | null;
         city: string | null;
         country: string | null;
@@ -151,6 +154,7 @@ export type ChatsData = {
         started_at: string;
         website_id: number | null;
         brand_id: number | null;
+        page_url: string | null;
         messages: ChatMessage[];
         lead: {
           id: number;
@@ -162,6 +166,7 @@ export type ChatsData = {
       })
     | null;
   assignees: Assignee[];
+  open_count: number;
   unlinked: number;
   pusher: { key: string | null; cluster: string } | null;
 };

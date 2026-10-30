@@ -194,7 +194,7 @@ class NativeChatService
         $location = implode(', ', array_filter([$conversation->city, $conversation->country]));
         $result = $this->intake->ingest($website->brand_id, $website, LeadSource::Chat, [
             'name' => Conversation::realVisitorName($conversation->visitor_name)
-                ?? ($conversation->city ? "Chat visitor ({$conversation->city})" : 'Chat visitor'),
+                ?? ($conversation->city ? "Visitor from {$conversation->city}" : 'Website visitor'),
             'email' => $conversation->visitor_email,
             'message' => $firstMessage,
             'form_name' => 'Live chat',
@@ -218,7 +218,7 @@ class NativeChatService
         if ($conversation->visitor_email && ! $lead->email) {
             $updates['email'] = $conversation->visitor_email;
         }
-        if ($conversation->visitor_name && str_starts_with($lead->name, 'Chat visitor')) {
+        if ($conversation->visitor_name && (str_starts_with($lead->name, 'Chat visitor') || str_starts_with($lead->name, 'Website visitor') || str_starts_with($lead->name, 'Visitor from '))) {
             $updates['name'] = Conversation::realVisitorName($conversation->visitor_name) ?? $lead->name;
         }
         if ($updates) {

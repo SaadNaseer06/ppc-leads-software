@@ -25,7 +25,7 @@ class ChatController extends Controller
         abort_unless($user->canViewChats(), 403);
 
         $kind = in_array($request->query('kind'), ['chat', 'ticket'], true) ? $request->query('kind') : null;
-        $query = Conversation::query()->visibleTo($user)->with('website:id,name');
+        $query = Conversation::query()->visibleTo($user)->with(['website:id,name', 'lead:id,name,assignee_id']);
         if ($kind) {
             $query->where('kind', $kind);
         }
@@ -51,12 +51,14 @@ class ChatController extends Controller
             ? $this->team->assignable($user, $selected->brand_id)
             : [];
 
+        $openCount = Conversation::query()->visibleTo($user)->where('status', 'open')->where('kind', 'chat')->count();
+
         return response()->json([
             'conversations' => $rows->map(fn (Conversation $c) => $this->row($c)),
             'has_more' => $hasMore,
             'selected' => $selected ? [
                 ...$this->row($selected),
-                ...$selected->only(['visitor_email', 'city', 'country', 'subject', 'started_at', 'website_id', 'brand_id']),
+                ...$selected->only(['visitor_name', 'visitor_email', 'city', 'country', 'subject', 'started_at', 'website_id', 'brand_id', 'page_url']),
                 'messages' => $selected->messages->map->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
                 'lead' => $selected->lead ? [
                     ...$selected->lead->only(['id', 'name', 'status', 'assignee_id']),
@@ -65,6 +67,7 @@ class ChatController extends Controller
                 ] : null,
             ] : null,
             'assignees' => $assignees,
+            'open_count' => $openCount,
             'unlinked' => $user->hasGlobalAccess() ? Conversation::whereNull('website_id')->count() : 0,
             'pusher' => [
                 'key' => config('broadcasting.connections.pusher.key'),
@@ -108,6 +111,8 @@ class ChatController extends Controller
         return [
             ...$c->only(['id', 'kind', 'provider', 'status', 'last_message', 'last_message_at', 'message_count', 'property_name']),
             'display_name' => $c->displayName(),
+            'visitor_email' => $c->visitor_email,
+            'is_live' => $c->status === 'open' && $c->kind === 'chat',
             'website' => $c->website?->only(['id', 'name']),
             'can_reply' => $c->provider === 'native' && $c->status === 'open',
         ];

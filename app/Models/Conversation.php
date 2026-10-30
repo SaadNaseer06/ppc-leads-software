@@ -70,7 +70,14 @@ class Conversation extends Model
 
     public function displayName(): string
     {
-        return self::realVisitorName($this->visitor_name)
-            ?? ($this->city ? "Visitor from {$this->city}" : 'Anonymous visitor');
+        if ($named = self::realVisitorName($this->visitor_name)) {
+            return $named;
+        }
+        $leadName = $this->relationLoaded('lead') ? $this->lead?->name : null;
+        if ($leadName && ! str_starts_with($leadName, 'Chat visitor') && strcasecmp($leadName, 'Anonymous visitor') !== 0) {
+            return $leadName;
+        }
+
+        return $this->city ? "Visitor from {$this->city}" : 'Website visitor';
     }
 }
