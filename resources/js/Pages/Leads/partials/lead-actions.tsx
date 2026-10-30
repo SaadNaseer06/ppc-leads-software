@@ -3,6 +3,7 @@ import { router } from "@inertiajs/react";
 import { Pencil, Trash2 } from "lucide-react";
 import { LeadStatus, STATUS_LABELS } from "@/lib/roles";
 import type { Assignee } from "@/lib/api-types";
+import { useConfirm } from "@/components/ui/confirm";
 import { Modal } from "@/components/ui/modal";
 import { apiRequest, useToast } from "@/components/ui/toast";
 import { useLiveSync } from "@/components/app-shell/live-provider";
@@ -25,6 +26,7 @@ export function LeadActions({
   canDelete?: boolean;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const syncLive = useLiveSync();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -103,7 +105,13 @@ export function LeadActions({
           className="btn-ghost text-red-600 hover:text-red-700"
           disabled={deleting || saving}
           onClick={async () => {
-            if (!confirm(`Delete lead “${leadName ?? "this lead"}”? This cannot be undone.`)) return;
+            const ok = await confirm({
+              title: `Delete lead “${leadName ?? "this lead"}”?`,
+              description: "This cannot be undone.",
+              confirmLabel: "Delete lead",
+              tone: "danger",
+            });
+            if (!ok) return;
             setDeleting(true);
             const res = await apiRequest(`/api/leads/${leadId}`, { method: "DELETE" });
             setDeleting(false);

@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { router } from "@inertiajs/react";
 import { Pencil, UserPlus } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm";
 import { Modal } from "@/components/ui/modal";
 import { apiRequest, useToast } from "@/components/ui/toast";
 
@@ -29,6 +30,7 @@ function UserForm({
   onDone: () => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const editing = Boolean(initial);
@@ -51,9 +53,12 @@ function UserForm({
     if (!editing) body.email = String(form.get("email") ?? "").trim();
 
     if (editing && initial!.active && body.active === false) {
-      const ok = window.confirm(
-        `Deactivate ${initial!.name}? They will be signed out and their open leads will move back to the unassigned queue.`
-      );
+      const ok = await confirm({
+        title: `Deactivate ${initial!.name}?`,
+        description: "They will be signed out and their open leads will move back to the unassigned queue.",
+        confirmLabel: "Deactivate",
+        tone: "danger",
+      });
       if (!ok) return;
     }
 

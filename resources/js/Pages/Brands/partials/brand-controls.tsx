@@ -1,15 +1,23 @@
 import { FormEvent, useState } from "react";
 import { router } from "@inertiajs/react";
 import { Plus, Trash2 } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm";
 import { Modal } from "@/components/ui/modal";
 import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
 
 export function DeleteBrandButton({ brandId, brandName }: { brandId: number; brandName: string }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
 
   async function remove() {
-    if (!window.confirm(`Delete brand “${brandName}”?`)) return;
+    const ok = await confirm({
+      title: `Delete brand “${brandName}”?`,
+      description: "This removes the brand from the dashboard. Continue only if you are sure.",
+      confirmLabel: "Delete brand",
+      tone: "danger",
+    });
+    if (!ok) return;
 
     setBusy(true);
     try {
@@ -32,13 +40,15 @@ export function DeleteBrandButton({ brandId, brandName }: { brandId: number; bra
       }
 
       if (first.status === 422 && firstBody.requires_force) {
-        const typed = window.prompt(
-          `“${brandName}” has ${firstBody.websites ?? 0} websites, ${firstBody.leads ?? 0} leads and ${firstBody.invoices ?? 0} invoices.\n\nDeleting the brand permanently removes all of that. Team members stay but lose this brand.\n\nType DELETE to confirm.`
-        );
-        if (typed !== "DELETE") {
-          if (typed !== null) toast.error("Type DELETE in capital letters to confirm");
-          return;
-        }
+        const forced = await confirm({
+          title: `Permanently delete “${brandName}”?`,
+          description: `This brand has ${firstBody.websites ?? 0} websites, ${firstBody.leads ?? 0} leads and ${firstBody.invoices ?? 0} invoices.\n\nDeleting it permanently removes all of that. Team members stay but lose this brand.`,
+          confirmLabel: "Delete everything",
+          tone: "danger",
+          requireText: "DELETE",
+          requireTextLabel: "Type DELETE to confirm",
+        });
+        if (!forced) return;
 
         const second = await fetch(`/api/admin/brands/${brandId}?force=1`, {
           method: "DELETE",

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { router } from "@inertiajs/react";
 import { FlaskConical, RefreshCw, Trash2 } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm";
 import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
 
 export function DeleteWebsiteButton({
@@ -11,12 +12,17 @@ export function DeleteWebsiteButton({
   websiteName: string;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
 
   async function remove() {
-    const ok = window.confirm(
-      `Remove “${websiteName}”? Existing leads stay in the system but are unlinked from this website. Embed snippets and webhooks for this site stop working immediately.`
-    );
+    const ok = await confirm({
+      title: `Remove “${websiteName}”?`,
+      description:
+        "Existing leads stay in the system but are unlinked from this website. Embed snippets and webhooks for this site stop working immediately.",
+      confirmLabel: "Remove website",
+      tone: "danger",
+    });
     if (!ok) return;
     setBusy(true);
     const res = await apiRequest(`/api/websites/${websiteId}`, { method: "DELETE" });
@@ -39,10 +45,17 @@ export function DeleteWebsiteButton({
 
 export function RotateKeyButton({ websiteId }: { websiteId: number }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
 
   async function rotate() {
-    if (!window.confirm("Generate a new key? The current embed snippet and webhook URL will stop working.")) return;
+    const ok = await confirm({
+      title: "Generate a new website key?",
+      description: "The current embed snippet and webhook URL will stop working until you update them on the site.",
+      confirmLabel: "Generate new key",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
     const res = await apiRequest(`/api/websites/${websiteId}`, { method: "PATCH", body: { rotate_key: true } });
     setBusy(false);

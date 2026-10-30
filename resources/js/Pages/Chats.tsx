@@ -7,6 +7,7 @@ import { formatDateTime, formatRelative, formatTime } from "@/lib/format";
 import { PageHeader, EmptyState } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/badges";
 import { Avatar } from "@/components/ui/avatar";
+import { useConfirm } from "@/components/ui/confirm";
 import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
 import { useLiveSync } from "@/components/app-shell/live-provider";
 import { getEcho } from "@/lib/echo";
@@ -25,6 +26,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const user = usePage<SharedProps>().props.auth.user!;
   const kind = params.kind === "chat" || params.kind === "ticket" ? params.kind : undefined;
   const toast = useToast();
+  const confirm = useConfirm();
   const syncLive = useLiveSync();
 
   const [list, setList] = useState<ConversationRow[]>(initial.conversations);
@@ -180,7 +182,13 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
 
   async function endChat() {
     if (!selected || ending) return;
-    if (!confirm("End this chat for the visitor?")) return;
+    const ok = await confirm({
+      title: "End this chat?",
+      description: "The visitor will no longer be able to send messages in this conversation.",
+      confirmLabel: "End chat",
+      tone: "danger",
+    });
+    if (!ok) return;
     setEnding(true);
     const res = await apiRequest(`/api/chats/${selected.id}/end`, { method: "POST" });
     setEnding(false);
@@ -212,7 +220,13 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
 
   async function deleteLead() {
     if (!selected?.lead || deleting) return;
-    if (!confirm(`Delete lead “${selected.lead.name}”? This cannot be undone. The chat transcript stays as history.`)) return;
+    const ok = await confirm({
+      title: `Delete lead “${selected.lead.name}”?`,
+      description: "This cannot be undone. The chat transcript stays as history.",
+      confirmLabel: "Delete lead",
+      tone: "danger",
+    });
+    if (!ok) return;
     setDeleting(true);
     const res = await apiRequest(`/api/leads/${selected.lead.id}`, { method: "DELETE" });
     setDeleting(false);

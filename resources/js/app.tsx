@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createInertiaApp, type ResolvedComponent } from "@inertiajs/react";
 import type { ReactNode } from "react";
 import DashboardLayout from "@/Layouts/DashboardLayout";
+import { ConfirmProvider } from "@/components/ui/confirm";
 import { ToastProvider } from "@/components/ui/toast";
 import { setTimezone } from "@/lib/format";
 import type { SharedProps } from "@/types";
@@ -25,7 +26,9 @@ createInertiaApp({
     setTimezone((props.initialPage.props as unknown as SharedProps).app.timezone);
     createRoot(el).render(
       <ToastProvider>
-        <App {...props} />
+        <ConfirmProvider>
+          <App {...props} />
+        </ConfirmProvider>
       </ToastProvider>
     );
   },
