@@ -7,6 +7,7 @@
  *   data-title="Chat with us"    panel title
  *   data-color="#0f766e"         accent colour
  *   data-greeting="Hi! …"        first system line when the panel opens
+ *   data-agent="Support"         fallback agent label when name is missing
  */
 (function () {
   "use strict";
@@ -27,9 +28,10 @@
   }
 
   var base = (script.getAttribute("data-endpoint") || new URL(script.src, location.href).origin).replace(/\/$/, "");
-  var title = script.getAttribute("data-title") || "Chat with us";
+  var title = script.getAttribute("data-title") || "Live support";
   var accent = script.getAttribute("data-color") || "#0f766e";
-  var greeting = script.getAttribute("data-greeting") || "Hi! Send a message and our team will reply shortly.";
+  var greeting = script.getAttribute("data-greeting") || "Welcome — send a message and a specialist will reply shortly.";
+  var agentFallback = script.getAttribute("data-agent") || "Support specialist";
   var STORAGE_KEY = "ppc_chat_token_" + siteKey;
 
   var state = {
@@ -43,6 +45,9 @@
     pollTimer: null,
     sending: false,
     started: false,
+    unread: 0,
+    agentName: null,
+    agentOnline: false,
   };
 
   function api(path, opts) {
@@ -74,44 +79,108 @@
     } catch (e) {}
   }
 
+  function hexToRgb(hex) {
+    var h = (hex || "").replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    if (isNaN(n)) return { r: 15, g: 118, b: 110 };
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+
   function css() {
     if (document.getElementById("ppc-chat-style")) return;
+    var rgb = hexToRgb(accent);
     var style = document.createElement("style");
     style.id = "ppc-chat-style";
     style.textContent =
-      "#ppc-chat-root{all:initial;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;position:fixed;z-index:2147483000;right:20px;bottom:20px;color:#0f172a}" +
+      "@keyframes ppc-fade-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}" +
+      "@keyframes ppc-pop{0%{transform:scale(.92)}60%{transform:scale(1.04)}100%{transform:scale(1)}}" +
+      "@keyframes ppc-pulse{0%,100%{box-shadow:0 10px 28px rgba(15,23,42,.22),0 0 0 0 rgba(" +
+      rgb.r +
+      "," +
+      rgb.g +
+      "," +
+      rgb.b +
+      ",.45)}50%{box-shadow:0 10px 28px rgba(15,23,42,.22),0 0 0 10px rgba(" +
+      rgb.r +
+      "," +
+      rgb.g +
+      "," +
+      rgb.b +
+      ",0)}}" +
+      "@keyframes ppc-badge-pop{0%{transform:scale(0)}70%{transform:scale(1.15)}100%{transform:scale(1)}}" +
+      "@keyframes ppc-dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}" +
+      "#ppc-chat-root{all:initial;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;position:fixed;z-index:2147483000;right:20px;bottom:20px;color:#0f172a}" +
       "#ppc-chat-root *{box-sizing:border-box}" +
-      "#ppc-chat-bubble{width:56px;height:56px;border-radius:50%;border:0;cursor:pointer;background:" +
+      "#ppc-chat-bubble{position:relative;width:60px;height:60px;border-radius:50%;border:0;cursor:pointer;background:linear-gradient(145deg," +
       accent +
-      ";color:#fff;box-shadow:0 8px 24px rgba(15,23,42,.25);display:flex;align-items:center;justify-content:center}" +
+      ",#0b5f58);color:#fff;box-shadow:0 12px 32px rgba(15,23,42,.28);display:flex;align-items:center;justify-content:center;transition:transform .2s ease}" +
+      "#ppc-chat-bubble:hover{transform:translateY(-2px)}" +
+      "#ppc-chat-bubble.has-unread{animation:ppc-pulse 1.8s ease-in-out infinite}" +
       "#ppc-chat-bubble svg{width:26px;height:26px;fill:currentColor}" +
-      "#ppc-chat-panel{position:absolute;right:0;bottom:72px;width:min(360px,calc(100vw - 32px));height:min(520px,calc(100vh - 100px));background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.28);display:none;flex-direction:column;overflow:hidden;border:1px solid #e2e8f0}" +
+      "#ppc-chat-badge{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;line-height:20px;text-align:center;border:2px solid #fff;display:none;animation:ppc-badge-pop .35s ease}" +
+      "#ppc-chat-badge.show{display:block}" +
+      "#ppc-chat-panel{position:absolute;right:0;bottom:76px;width:min(380px,calc(100vw - 28px));height:min(560px,calc(100vh - 110px));background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.28);display:none;flex-direction:column;overflow:hidden;border:1px solid #e2e8f0;animation:ppc-pop .28s ease}" +
       "#ppc-chat-panel.open{display:flex}" +
-      "#ppc-chat-header{background:" +
+      "#ppc-chat-header{background:linear-gradient(135deg," +
       accent +
-      ";color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}" +
-      "#ppc-chat-header strong{font-size:15px}" +
-      "#ppc-chat-header button{background:transparent;border:0;color:#fff;cursor:pointer;font-size:20px;line-height:1;opacity:.85}" +
-      "#ppc-chat-msgs{flex:1;overflow-y:auto;padding:14px;background:#f8fafc;display:flex;flex-direction:column;gap:10px}" +
-      ".ppc-msg{max-width:85%;padding:8px 12px;border-radius:14px;font-size:14px;line-height:1.4;white-space:pre-wrap;word-break:break-word}" +
-      ".ppc-msg.visitor{align-self:flex-end;background:" +
+      " 0%,#0b5f58 100%);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px}" +
+      "#ppc-chat-header .ppc-agent-avatar{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;border:1px solid rgba(255,255,255,.25)}" +
+      "#ppc-chat-header .ppc-head-text{min-width:0;flex:1}" +
+      "#ppc-chat-header strong{display:block;font-size:15px;font-weight:650;letter-spacing:.01em}" +
+      "#ppc-chat-header .ppc-status{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;opacity:.92}" +
+      "#ppc-chat-header .ppc-status-dot{width:8px;height:8px;border-radius:50%;background:#86efac;box-shadow:0 0 0 3px rgba(134,239,172,.25)}" +
+      "#ppc-chat-header .ppc-status-dot.away{background:#fcd34d;box-shadow:0 0 0 3px rgba(252,211,77,.25)}" +
+      "#ppc-chat-header button{background:rgba(255,255,255,.12);border:0;color:#fff;cursor:pointer;width:32px;height:32px;border-radius:8px;font-size:18px;line-height:1;flex-shrink:0}" +
+      "#ppc-chat-header button:hover{background:rgba(255,255,255,.2)}" +
+      "#ppc-chat-msgs{flex:1;overflow-y:auto;padding:16px 14px;background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);display:flex;flex-direction:column;gap:12px}" +
+      ".ppc-row{display:flex;flex-direction:column;gap:4px;max-width:88%;animation:ppc-fade-up .28s ease}" +
+      ".ppc-row.visitor{align-self:flex-end;align-items:flex-end}" +
+      ".ppc-row.agent{align-self:flex-start;align-items:flex-start}" +
+      ".ppc-row.system{align-self:center;max-width:95%}" +
+      ".ppc-row.agent-new .ppc-bubble{box-shadow:0 0 0 2px rgba(" +
+      rgb.r +
+      "," +
+      rgb.g +
+      "," +
+      rgb.b +
+      ",.28)}" +
+      ".ppc-label{font-size:11px;font-weight:600;color:#64748b;padding:0 4px}" +
+      ".ppc-bubble{padding:10px 13px;border-radius:16px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}" +
+      ".ppc-row.visitor .ppc-bubble{background:" +
       accent +
-      ";color:#fff;border-bottom-right-radius:4px}" +
-      ".ppc-msg.agent{align-self:flex-start;background:#fff;border:1px solid #e2e8f0;color:#0f172a;border-bottom-left-radius:4px}" +
-      ".ppc-msg.system{align-self:center;background:transparent;color:#94a3b8;font-size:12px;padding:0}" +
-      ".ppc-meta{font-size:11px;color:#94a3b8;margin-top:2px}" +
-      "#ppc-chat-form{display:flex;gap:8px;padding:10px;border-top:1px solid #e2e8f0;background:#fff}" +
-      "#ppc-chat-form input,#ppc-chat-prechat input{flex:1;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:14px;outline:none}" +
+      ";color:#fff;border-bottom-right-radius:5px}" +
+      ".ppc-row.agent .ppc-bubble{background:#fff;border:1px solid #e2e8f0;color:#0f172a;border-bottom-left-radius:5px;box-shadow:0 1px 2px rgba(15,23,42,.04)}" +
+      ".ppc-row.system .ppc-bubble{background:transparent;border:0;color:#64748b;font-size:12.5px;text-align:center;padding:4px 8px}" +
+      ".ppc-time{font-size:10.5px;color:#94a3b8;padding:0 4px}" +
+      "#ppc-chat-typing{display:none;align-items:center;gap:8px;padding:0 14px 10px;background:transparent;font-size:12px;color:#64748b}" +
+      "#ppc-chat-typing.show{display:flex}" +
+      "#ppc-chat-typing .ppc-dots{display:inline-flex;gap:3px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;border-bottom-left-radius:5px}" +
+      "#ppc-chat-typing .ppc-dots i{width:5px;height:5px;border-radius:50%;background:#94a3b8;display:block;animation:ppc-dot 1.1s infinite}" +
+      "#ppc-chat-typing .ppc-dots i:nth-child(2){animation-delay:.15s}" +
+      "#ppc-chat-typing .ppc-dots i:nth-child(3){animation-delay:.3s}" +
+      "#ppc-chat-form{display:flex;gap:8px;padding:12px;border-top:1px solid #e2e8f0;background:#fff}" +
+      "#ppc-chat-form input,#ppc-chat-prechat input{flex:1;border:1px solid #e2e8f0;border-radius:12px;padding:11px 12px;font-size:14px;outline:none;background:#f8fafc}" +
       "#ppc-chat-form input:focus,#ppc-chat-prechat input:focus{border-color:" +
       accent +
-      "}" +
-      "#ppc-chat-form button,#ppc-chat-prechat button{border:0;border-radius:10px;background:" +
+      ";background:#fff;box-shadow:0 0 0 3px rgba(" +
+      rgb.r +
+      "," +
+      rgb.g +
+      "," +
+      rgb.b +
+      ",.15)}" +
+      "#ppc-chat-form button,#ppc-chat-prechat button{border:0;border-radius:12px;background:" +
       accent +
-      ";color:#fff;padding:0 14px;font-size:14px;font-weight:600;cursor:pointer}" +
-      "#ppc-chat-form button:disabled{opacity:.6;cursor:default}" +
+      ";color:#fff;padding:0 16px;font-size:14px;font-weight:650;cursor:pointer}" +
+      "#ppc-chat-form button:disabled{opacity:.55;cursor:default}" +
       "#ppc-chat-prechat{padding:14px;border-top:1px solid #e2e8f0;background:#fff;display:grid;gap:8px}" +
-      "#ppc-chat-prechat p{margin:0 0 4px;font-size:13px;color:#64748b}" +
-      "#ppc-chat-ended{padding:12px;text-align:center;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0;background:#fff}";
+      "#ppc-chat-prechat p{margin:0 0 2px;font-size:13px;color:#64748b}" +
+      "#ppc-chat-ended{padding:14px;text-align:center;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0;background:#fff}" +
+      "#ppc-chat-toast{position:absolute;right:0;bottom:76px;width:min(300px,calc(100vw - 28px));background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.22);padding:12px 14px;display:none;gap:10px;align-items:flex-start;cursor:pointer;animation:ppc-fade-up .3s ease}" +
+      "#ppc-chat-toast.show{display:flex}" +
+      "#ppc-chat-toast strong{display:block;font-size:13px;color:#0f172a}" +
+      "#ppc-chat-toast span{display:block;font-size:12.5px;color:#64748b;margin-top:2px;line-height:1.35;max-height:2.7em;overflow:hidden}";
     document.head.appendChild(style);
   }
 
@@ -132,31 +201,137 @@
     return node;
   }
 
-  function renderMessages() {
+  function initials(name) {
+    var parts = String(name || agentFallback)
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) return "S";
+    return ((parts[0][0] || "") + (parts[1] ? parts[1][0] : "")).toUpperCase();
+  }
+
+  function formatTime(iso) {
+    if (!iso) return "";
+    try {
+      var d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function lastAgent() {
+    for (var i = state.messages.length - 1; i >= 0; i--) {
+      if (state.messages[i].sender_type === "agent") return state.messages[i];
+    }
+    return null;
+  }
+
+  function updateHeader() {
+    var avatar = document.getElementById("ppc-chat-avatar");
+    var status = document.getElementById("ppc-chat-status");
+    var statusDot = document.getElementById("ppc-chat-status-dot");
+    var agent = lastAgent();
+    if (agent && agent.sender_name) state.agentName = agent.sender_name;
+    if (agent) state.agentOnline = true;
+
+    var name = state.agentName || title;
+    if (avatar) avatar.textContent = initials(state.agentName || title);
+
+    if (status && statusDot) {
+      if (state.status !== "open") {
+        status.textContent = "Chat ended";
+        statusDot.className = "ppc-status-dot away";
+      } else if (state.agentOnline) {
+        status.textContent = (state.agentName || agentFallback) + " · Online";
+        statusDot.className = "ppc-status-dot";
+      } else {
+        status.textContent = "We typically reply in a few minutes";
+        statusDot.className = "ppc-status-dot away";
+      }
+    }
+  }
+
+  function updateBadge() {
+    var badge = document.getElementById("ppc-chat-badge");
+    var bubble = document.getElementById("ppc-chat-bubble");
+    if (!badge || !bubble) return;
+    if (state.unread > 0 && !state.open) {
+      badge.textContent = state.unread > 9 ? "9+" : String(state.unread);
+      badge.classList.add("show");
+      bubble.classList.add("has-unread");
+    } else {
+      badge.classList.remove("show");
+      bubble.classList.remove("has-unread");
+    }
+  }
+
+  function showAgentToast(message) {
+    if (state.open) return;
+    var toast = document.getElementById("ppc-chat-toast");
+    if (!toast) return;
+    var who = message.sender_name || state.agentName || agentFallback;
+    toast.querySelector("strong").textContent = who;
+    toast.querySelector("span").textContent = message.body;
+    toast.classList.add("show");
+    clearTimeout(showAgentToast._t);
+    showAgentToast._t = setTimeout(function () {
+      toast.classList.remove("show");
+    }, 5500);
+  }
+
+  function flashTyping(brief) {
+    var typing = document.getElementById("ppc-chat-typing");
+    if (!typing) return;
+    typing.classList.add("show");
+    clearTimeout(flashTyping._t);
+    flashTyping._t = setTimeout(function () {
+      typing.classList.remove("show");
+    }, brief ? 600 : 1400);
+  }
+
+  function renderMessages(opts) {
+    opts = opts || {};
     var box = document.getElementById("ppc-chat-msgs");
     if (!box) return;
+    var highlightId = opts.highlightId;
     box.innerHTML = "";
     if (!state.messages.length) {
-      box.appendChild(el("div", { class: "ppc-msg system", text: greeting }));
+      box.appendChild(
+        el("div", { class: "ppc-row system" }, [el("div", { class: "ppc-bubble", text: greeting })])
+      );
     }
     state.messages.forEach(function (m) {
-      var row = el("div", { class: "ppc-msg " + (m.sender_type || "system"), text: m.body });
-      box.appendChild(row);
+      var type = m.sender_type || "system";
+      if (type === "system") {
+        box.appendChild(el("div", { class: "ppc-row system" }, [el("div", { class: "ppc-bubble", text: m.body })]));
+        return;
+      }
+      var rowClass = "ppc-row " + type + (highlightId && m.id === highlightId ? " agent-new" : "");
+      var kids = [];
+      if (type === "agent") {
+        kids.push(el("div", { class: "ppc-label", text: m.sender_name || state.agentName || agentFallback }));
+      }
+      kids.push(el("div", { class: "ppc-bubble", text: m.body }));
+      var time = formatTime(m.sent_at);
+      if (time) kids.push(el("div", { class: "ppc-time", text: time }));
+      box.appendChild(el("div", { class: rowClass }, kids));
     });
     box.scrollTop = box.scrollHeight;
+    updateHeader();
   }
 
   function setComposerVisible() {
     var form = document.getElementById("ppc-chat-form");
     var ended = document.getElementById("ppc-chat-ended");
-    var pre = document.getElementById("ppc-chat-prechat");
     var open = state.status === "open";
     if (form) form.style.display = open ? "flex" : "none";
     if (ended) ended.style.display = open ? "none" : "block";
-    if (pre) pre.style.display = "none";
+    updateHeader();
   }
 
-  function upsertMessage(m) {
+  function upsertMessage(m, opts) {
+    opts = opts || {};
     if (!m || !m.id) return;
     for (var i = 0; i < state.messages.length; i++) {
       if (state.messages[i].id === m.id) return;
@@ -165,7 +340,22 @@
     state.messages.sort(function (a, b) {
       return a.id - b.id;
     });
-    renderMessages();
+
+    var isAgent = m.sender_type === "agent";
+    if (isAgent) {
+      state.agentName = m.sender_name || state.agentName;
+      state.agentOnline = true;
+      if (!state.open) {
+        state.unread += 1;
+        updateBadge();
+        showAgentToast(m);
+      } else {
+        flashTyping(true);
+      }
+    }
+
+    renderMessages({ highlightId: isAgent ? m.id : null });
+    setComposerVisible();
   }
 
   function startPolling() {
@@ -176,18 +366,13 @@
       api("/api/chat/messages?visitor_token=" + encodeURIComponent(state.visitorToken) + "&since_id=" + since)
         .then(function (data) {
           state.status = data.status || state.status;
-          (data.messages || []).forEach(upsertMessage);
+          (data.messages || []).forEach(function (m) {
+            upsertMessage(m);
+          });
           setComposerVisible();
         })
         .catch(function () {});
     }, 3000);
-  }
-
-  function stopPolling() {
-    if (state.pollTimer) {
-      clearInterval(state.pollTimer);
-      state.pollTimer = null;
-    }
   }
 
   function loadPusher(cb) {
@@ -218,20 +403,20 @@
         var client = new window.Pusher(cfg.key, {
           cluster: cfg.cluster || "mt1",
           authEndpoint: cfg.auth_endpoint || base + "/api/chat/auth",
-          auth: {
-            params: { visitor_token: state.visitorToken },
-          },
+          auth: { params: { visitor_token: state.visitorToken } },
         });
         state.pusher = client;
         var channel = client.subscribe("private-chat." + state.conversationId);
         state.channel = channel;
         channel.bind("ChatMessageSent", function (payload) {
-          if (payload && payload.message) upsertMessage(payload.message);
+          if (payload && payload.message) {
+            if (payload.message.sender_type === "agent" && state.open) flashTyping(false);
+            upsertMessage(payload.message);
+          }
         });
         channel.bind("pusher:subscription_error", function () {
           startPolling();
         });
-        // Soft fallback even when Pusher works (missed events)
         startPolling();
       } catch (e) {
         startPolling();
@@ -254,6 +439,10 @@
       state.conversationId = data.conversation_id;
       state.status = data.status || "open";
       state.messages = data.messages || [];
+      if (lastAgent()) {
+        state.agentName = lastAgent().sender_name || state.agentName;
+        state.agentOnline = true;
+      }
       saveToken(data.visitor_token);
       renderMessages();
       setComposerVisible();
@@ -286,66 +475,126 @@
       });
   }
 
+  function openPanel() {
+    var panel = document.getElementById("ppc-chat-panel");
+    var toast = document.getElementById("ppc-chat-toast");
+    state.open = true;
+    state.unread = 0;
+    updateBadge();
+    if (toast) toast.classList.remove("show");
+    if (panel) panel.classList.add("open");
+    ensureSession().catch(function (e) {
+      alert(e.message || "Chat is unavailable");
+    });
+    setTimeout(function () {
+      var pre = document.getElementById("ppc-chat-prechat");
+      if (pre && state.messages.length === 0) pre.style.display = "grid";
+    }, 350);
+    var input = document.getElementById("ppc-chat-input");
+    if (input) setTimeout(function () {
+      input.focus();
+    }, 200);
+  }
+
+  function closePanel() {
+    var panel = document.getElementById("ppc-chat-panel");
+    state.open = false;
+    if (panel) panel.classList.remove("open");
+  }
+
   function buildUI() {
     css();
     var root = el("div", { id: "ppc-chat-root" });
+
+    var toast = el(
+      "div",
+      {
+        id: "ppc-chat-toast",
+        onClick: function () {
+          openPanel();
+        },
+      },
+      [
+        el("div", { class: "ppc-agent-avatar", html: "", style: "display:none" }),
+        el("div", { style: "min-width:0;flex:1" }, [el("strong", { text: agentFallback }), el("span", { text: "" })]),
+      ]
+    );
+
     var panel = el("div", { id: "ppc-chat-panel" }, [
       el("div", { id: "ppc-chat-header" }, [
-        el("strong", { text: title }),
+        el("div", { id: "ppc-chat-avatar", class: "ppc-agent-avatar", text: initials(title) }),
+        el("div", { class: "ppc-head-text" }, [
+          el("strong", { text: title }),
+          el("div", { class: "ppc-status" }, [
+            el("span", { id: "ppc-chat-status-dot", class: "ppc-status-dot away" }),
+            el("span", { id: "ppc-chat-status", text: "We typically reply in a few minutes" }),
+          ]),
+        ]),
         el("button", {
           type: "button",
           "aria-label": "Close",
           text: "×",
-          onClick: function () {
-            state.open = false;
-            panel.classList.remove("open");
-          },
+          onClick: closePanel,
         }),
       ]),
       el("div", { id: "ppc-chat-msgs" }),
-      el("form", {
-        id: "ppc-chat-prechat",
-        style: "display:none",
-        onSubmit: function (e) {
-          e.preventDefault();
-          var name = document.getElementById("ppc-chat-name").value.trim();
-          var email = document.getElementById("ppc-chat-email").value.trim();
-          ensureSession().then(function () {
-            return api("/api/chat/visitor", {
-              method: "POST",
-              body: { visitor_token: state.visitorToken, name: name || null, email: email || null },
-            });
-          }).then(function () {
-            document.getElementById("ppc-chat-prechat").style.display = "none";
-          });
-        },
-      }, [
-        el("p", { text: "Optional — leave your name so we can follow up:" }),
-        el("input", { id: "ppc-chat-name", type: "text", placeholder: "Name", autocomplete: "name" }),
-        el("input", { id: "ppc-chat-email", type: "email", placeholder: "Email", autocomplete: "email" }),
-        el("button", { type: "submit", text: "Save" }),
+      el("div", { id: "ppc-chat-typing" }, [
+        el("div", { class: "ppc-dots", html: "<i></i><i></i><i></i>" }),
+        el("span", { text: "Specialist is responding…" }),
       ]),
-      el("form", {
-        id: "ppc-chat-form",
-        onSubmit: function (e) {
-          e.preventDefault();
-          var input = document.getElementById("ppc-chat-input");
-          var body = (input.value || "").trim();
-          if (!body) return;
-          input.value = "";
-          sendMessage(body);
+      el(
+        "form",
+        {
+          id: "ppc-chat-prechat",
+          style: "display:none",
+          onSubmit: function (e) {
+            e.preventDefault();
+            var name = document.getElementById("ppc-chat-name").value.trim();
+            var email = document.getElementById("ppc-chat-email").value.trim();
+            ensureSession()
+              .then(function () {
+                return api("/api/chat/visitor", {
+                  method: "POST",
+                  body: { visitor_token: state.visitorToken, name: name || null, email: email || null },
+                });
+              })
+              .then(function () {
+                document.getElementById("ppc-chat-prechat").style.display = "none";
+              });
+          },
         },
-      }, [
-        el("input", {
-          id: "ppc-chat-input",
-          type: "text",
-          placeholder: "Type a message…",
-          autocomplete: "off",
-          maxlength: "4000",
-        }),
-        el("button", { type: "submit", text: "Send" }),
-      ]),
-      el("div", { id: "ppc-chat-ended", style: "display:none", text: "This chat has ended." }),
+        [
+          el("p", { text: "Optional — share your details so we can follow up:" }),
+          el("input", { id: "ppc-chat-name", type: "text", placeholder: "Your name", autocomplete: "name" }),
+          el("input", { id: "ppc-chat-email", type: "email", placeholder: "Email", autocomplete: "email" }),
+          el("button", { type: "submit", text: "Continue" }),
+        ]
+      ),
+      el(
+        "form",
+        {
+          id: "ppc-chat-form",
+          onSubmit: function (e) {
+            e.preventDefault();
+            var input = document.getElementById("ppc-chat-input");
+            var body = (input.value || "").trim();
+            if (!body) return;
+            input.value = "";
+            sendMessage(body);
+          },
+        },
+        [
+          el("input", {
+            id: "ppc-chat-input",
+            type: "text",
+            placeholder: "Write your message…",
+            autocomplete: "off",
+            maxlength: "4000",
+          }),
+          el("button", { type: "submit", text: "Send" }),
+        ]
+      ),
+      el("div", { id: "ppc-chat-ended", style: "display:none", text: "This conversation has ended. Thank you for chatting with us." }),
     ]);
 
     var bubble = el("button", {
@@ -353,25 +602,14 @@
       type: "button",
       "aria-label": "Open live chat",
       html:
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.2L4 17.2V4h16v12z"/></svg>',
+        '<span id="ppc-chat-badge"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.2L4 17.2V4h16v12z"/></svg>',
       onClick: function () {
-        state.open = !state.open;
-        if (state.open) {
-          panel.classList.add("open");
-          ensureSession().catch(function (e) {
-            alert(e.message || "Chat is unavailable");
-          });
-          // Offer optional contact once panel opens
-          setTimeout(function () {
-            var pre = document.getElementById("ppc-chat-prechat");
-            if (pre && state.messages.length === 0) pre.style.display = "grid";
-          }, 400);
-        } else {
-          panel.classList.remove("open");
-        }
+        if (state.open) closePanel();
+        else openPanel();
       },
     });
 
+    root.appendChild(toast);
     root.appendChild(panel);
     root.appendChild(bubble);
     document.body.appendChild(root);
@@ -390,14 +628,7 @@
 
   window.PPCChat = {
     loaded: true,
-    open: function () {
-      var bubble = document.getElementById("ppc-chat-bubble");
-      if (bubble && !state.open) bubble.click();
-    },
-    close: function () {
-      var panel = document.getElementById("ppc-chat-panel");
-      state.open = false;
-      if (panel) panel.classList.remove("open");
-    },
+    open: openPanel,
+    close: closePanel,
   };
 })();
