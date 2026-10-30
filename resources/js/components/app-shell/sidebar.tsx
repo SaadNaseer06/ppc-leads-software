@@ -13,9 +13,9 @@ import {
   UserCog,
   Wallet,
   X,
-  Zap,
 } from "lucide-react";
 import type { NavItem, NavKey } from "@/lib/rbac";
+import { BrandMark } from "@/components/brand-mark";
 import { Avatar } from "@/components/ui/avatar";
 import { useLiveCounts } from "./live-provider";
 
@@ -119,7 +119,7 @@ function Brand({ dark }: { dark: boolean }) {
   return (
     <Link href="/dashboard" className="flex items-center gap-2.5">
       <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-white">
-        <Zap className="h-4 w-4" />
+        <BrandMark className="h-4 w-4" />
       </span>
       <span className={`text-[15px] font-semibold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>
         PPC Leads

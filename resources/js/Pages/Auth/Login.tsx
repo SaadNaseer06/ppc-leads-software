@@ -1,6 +1,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { Head, useForm } from "@inertiajs/react";
-import { BarChart3, Loader2, MessageSquare, Users, Zap } from "lucide-react";
+import { BarChart3, Loader2, MessageSquare, Users } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 
 const DEMO_ACCOUNTS = [
   ["superadmin@ppc.local", "Super Admin"],
@@ -26,7 +27,7 @@ export default function Login({ showDemo }: { showDemo: boolean }) {
         <div className="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-teal-500/10 blur-3xl" />
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
-            <Zap className="h-5 w-5" />
+            <BrandMark className="h-5 w-5" />
           </span>
           <span className="text-lg font-semibold text-white">PPC Leads</span>
         </div>
@@ -53,7 +54,7 @@ export default function Login({ showDemo }: { showDemo: boolean }) {
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
-              <Zap className="h-5 w-5" />
+              <BrandMark className="h-5 w-5" />
             </span>
             <span className="text-lg font-semibold text-slate-900">PPC Leads</span>
           </div>

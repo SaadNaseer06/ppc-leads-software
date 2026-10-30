@@ -8,6 +8,7 @@
  *   data-color="#0f766e"         accent colour
  *   data-greeting="Hi! …"        first system line when the panel opens
  *   data-agent="Support"         fallback agent label when name is missing
+ *   data-prompts="A|B|C"         quick-reply chips (pipe-separated); empty string disables
  */
 (function () {
   "use strict";
@@ -32,6 +33,17 @@
   var accent = script.getAttribute("data-color") || "#0f766e";
   var greeting = script.getAttribute("data-greeting") || "Welcome — send a message and a specialist will reply shortly.";
   var agentFallback = script.getAttribute("data-agent") || "Support specialist";
+  var promptsAttr = script.getAttribute("data-prompts");
+  var quickPrompts =
+    promptsAttr === ""
+      ? []
+      : (promptsAttr || "I'd like a quote|I have a question|Can someone help me?|Tell me about your services")
+          .split("|")
+          .map(function (s) {
+            return s.trim();
+          })
+          .filter(Boolean)
+          .slice(0, 6);
   var STORAGE_KEY = "ppc_chat_token_" + siteKey;
   // Poll fast only when realtime (Pusher) isn't delivering; otherwise a slow safety net
   var POLL_FAST_MS = 4000;
@@ -164,6 +176,14 @@
       ";color:#fff;border-bottom-right-radius:5px}" +
       ".ppc-row.agent .ppc-bubble{background:#fff;border:1px solid #e2e8f0;color:#0f172a;border-bottom-left-radius:5px;box-shadow:0 1px 2px rgba(15,23,42,.04)}" +
       ".ppc-row.system .ppc-bubble{background:transparent;border:0;color:#64748b;font-size:12.5px;text-align:center;padding:4px 8px}" +
+      ".ppc-prompts{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:4px 2px 2px;animation:ppc-fade-up .35s ease}" +
+      ".ppc-prompt{border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:550;line-height:1.3;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:border-color .15s,color .15s,background .15s}" +
+      ".ppc-prompt:hover{border-color:" +
+      accent +
+      ";color:" +
+      accent +
+      ";background:#fff}" +
+      ".ppc-prompt:disabled{opacity:.55;cursor:default}" +
       ".ppc-time{font-size:10.5px;color:#94a3b8;padding:0 4px}" +
       "#ppc-chat-typing{display:none;align-items:center;gap:8px;padding:0 14px 10px;background:transparent;font-size:12px;color:#64748b}" +
       "#ppc-chat-typing.show{display:flex}" +
@@ -313,6 +333,29 @@
     }, brief ? 600 : 1400);
   }
 
+  function hasVisitorMessage() {
+    return state.messages.some(function (m) {
+      return m.sender_type === "visitor";
+    });
+  }
+
+  function renderQuickPrompts(box) {
+    if (!quickPrompts.length || state.status !== "open" || hasVisitorMessage()) return;
+    var chips = quickPrompts.map(function (text) {
+      return el("button", {
+        type: "button",
+        class: "ppc-prompt",
+        text: text,
+        onClick: function () {
+          if (state.sending || state.status !== "open") return;
+          markContactDone(true);
+          sendMessage(text);
+        },
+      });
+    });
+    box.appendChild(el("div", { class: "ppc-prompts", role: "group", "aria-label": "Suggested messages" }, chips));
+  }
+
   function renderMessages(opts) {
     opts = opts || {};
     var box = document.getElementById("ppc-chat-msgs");
@@ -340,6 +383,7 @@
       if (time) kids.push(el("div", { class: "ppc-time", text: time }));
       box.appendChild(el("div", { class: rowClass }, kids));
     });
+    renderQuickPrompts(box);
     box.scrollTop = box.scrollHeight;
     updateHeader();
   }

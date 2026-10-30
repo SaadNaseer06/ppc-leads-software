@@ -87,7 +87,12 @@ export default function WebsiteShow(data: WebsiteDetail) {
               <Code value={website.chat_snippet} />
               <p className="text-xs text-slate-500">
                 Toggle &quot;Enable live chat widget&quot; in settings if you need to pause the bubble without removing the
-                snippet.
+                snippet. Optional attributes:{" "}
+                <code className="rounded bg-slate-100 px-1">data-title</code>,{" "}
+                <code className="rounded bg-slate-100 px-1">data-color</code>,{" "}
+                <code className="rounded bg-slate-100 px-1">data-greeting</code>,{" "}
+                <code className="rounded bg-slate-100 px-1">data-prompts</code> (pipe-separated quick replies, e.g.{" "}
+                <code className="rounded bg-slate-100 px-1">I&apos;d like a quote|I have a question</code>).
               </p>
             </div>
           </section>
