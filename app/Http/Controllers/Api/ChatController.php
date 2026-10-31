@@ -108,6 +108,24 @@ class ChatController extends Controller
         ]);
     }
 
+    /** Admins and Super Admins remove chats (one or a selection); linked leads stay */
+    public function destroy(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canDeleteChats(), 403);
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:100'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $deleted = $this->native->delete($user, $data['ids']);
+        if ($deleted === 0) {
+            return response()->json(['error' => 'None of the selected chats are available'], 404);
+        }
+
+        return response()->json(['deleted' => $deleted]);
+    }
+
     private function row(Conversation $c): array
     {
         return $c->toInboxRow();

@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Events\ChatDeleted;
 use App\Events\ChatMessageSent;
 use App\Events\LeadsChanged;
 use App\Models\Conversation;
+use App\Models\ConversationMessage;
 use App\Models\Lead;
 use App\Services\NativeChatService;
 use Illuminate\Broadcasting\Broadcasters\Broadcaster;
@@ -158,5 +160,45 @@ class NativeChatTest extends TestCase
         $this->actingAs($this->user(Role::Admin, [$brand]));
         $this->patchJson("/api/leads/{$leadId}", ['assignee_id' => $rep->id])->assertOk();
         Event::assertDispatched(LeadsChanged::class, fn ($e) => in_array("leads.user.{$rep->id}", $e->channels, true));
+    }
+
+    public function test_admins_delete_chats_and_the_lead_stays(): void
+    {
+        Event::fake([ChatDeleted::class]);
+        $brand = $this->brand();
+        $other = $this->brand();
+        $site = $this->website($brand);
+        $otherSite = $this->website($other);
+        $chat = app(NativeChatService::class);
+        $session = $chat->session($site, null);
+        $chat->visitorMessage($session['conversation'], 'Test message');
+        $conversation = $session['conversation']->fresh();
+        $elsewhere = $chat->session($otherSite, null)['conversation'];
+        $chat->visitorMessage($elsewhere, 'Other brand');
+
+        $this->actingAs($this->user(Role::FrontSales, [$brand]));
+        $this->postJson('/api/chats/delete', ['ids' => [$conversation->id]])->assertForbidden();
+
+        $this->actingAs($this->user(Role::Admin, [$other]));
+        $this->postJson('/api/chats/delete', ['ids' => [$conversation->id]])->assertNotFound();
+
+        $this->actingAs($this->user(Role::Admin, [$brand]));
+        $this->postJson('/api/chats/delete', ['ids' => [$conversation->id, $elsewhere->id]])
+            ->assertOk()->assertJsonPath('deleted', 1); // the other brand's chat isn't theirs to delete
+        $this->assertNull($conversation->fresh());
+        $this->assertSame(0, ConversationMessage::where('conversation_id', $conversation->id)->count());
+        $this->assertNotNull(Lead::find($conversation->lead_id));
+        $this->assertNotNull($elsewhere->fresh());
+        Event::assertDispatched(ChatDeleted::class, fn ($e) => $e->conversationIds === [$conversation->id] && $e->brandIds === [$brand->id]);
+
+        // The visitor's widget is told the chat is gone and can start a new one
+        $this->getJson("/api/chat/messages?visitor_token={$session['visitor_token']}")->assertNotFound();
+        $this->postJson('/api/chat/messages', ['visitor_token' => $session['visitor_token'], 'body' => 'Hello?'])->assertNotFound();
+        $this->postJson('/api/chat/session', ['public_key' => $site->public_key, 'visitor_token' => $session['visitor_token']])
+            ->assertOk()->assertJsonPath('created', true);
+
+        $this->actingAs($this->user(Role::SuperAdmin));
+        $this->postJson('/api/chats/delete', ['ids' => [$elsewhere->id]])->assertOk()->assertJsonPath('deleted', 1);
+        $this->postJson('/api/chats/delete', ['ids' => [$elsewhere->id]])->assertNotFound();
     }
 }

@@ -53,6 +53,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/chats', [ChatController::class, 'index']);
     Route::post('/chats/{id}/messages', [ChatController::class, 'storeMessage'])->whereNumber('id');
     Route::post('/chats/{id}/end', [ChatController::class, 'end'])->whereNumber('id');
+    Route::post('/chats/delete', [ChatController::class, 'destroy']);
 
     Route::get('/websites', [WebsiteController::class, 'index']);
     Route::post('/websites', [WebsiteController::class, 'store']);

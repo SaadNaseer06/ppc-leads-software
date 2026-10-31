@@ -89,7 +89,11 @@
       credentials: "omit",
     }).then(function (res) {
       return res.json().then(function (data) {
-        if (!res.ok) throw new Error((data && data.error) || "Request failed");
+        if (!res.ok) {
+          var err = new Error((data && data.error) || "Request failed");
+          err.status = res.status;
+          throw err;
+        }
         return data;
       });
     });
@@ -489,7 +493,16 @@
         }
         setComposerVisible();
       })
-      .catch(function () {});
+      .catch(function (e) {
+        if (e && e.status === 404) chatGone();
+      });
+  }
+
+  /** The team deleted this chat: offer a fresh one instead of failing on every send */
+  function chatGone() {
+    if (state.status !== "open") return;
+    state.status = "ended";
+    setComposerVisible();
   }
 
   function startPolling() {
@@ -544,6 +557,7 @@
         var syncRealtime = function () {
           state.realtime = subscribed && state.eventSeen && client.connection.state === "connected";
         };
+        channel.bind("ChatDeleted", chatGone);
         channel.bind("ChatMessageSent", function (payload) {
           if (payload && payload.message) {
             state.eventSeen = true;
@@ -677,9 +691,14 @@
         upsertMessage(data.message);
       })
       .catch(function (e) {
-        showError(e.message || "Your message could not be sent. Please try again.");
         var input = document.getElementById("ppc-chat-input");
         if (input && !input.value) input.value = body;
+        if (e && e.status === 404) {
+          chatGone();
+          showError("This conversation was closed. Start a new chat to send your message.");
+          return;
+        }
+        showError(e.message || "Your message could not be sent. Please try again.");
       })
       .finally(function () {
         state.sending = false;

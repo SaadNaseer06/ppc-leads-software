@@ -100,6 +100,12 @@ class User extends Authenticatable
         return $this->canAssignLeads();
     }
 
+    /** Remove chats, e.g. test conversations (Admins only within their brands) */
+    public function canDeleteChats(): bool
+    {
+        return $this->canAssignLeads();
+    }
+
     public function canCreateLeads(): bool
     {
         return $this->canAssignLeads() || $this->isSales();

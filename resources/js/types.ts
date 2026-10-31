@@ -5,6 +5,7 @@ export type Permission =
   | "create_leads"
   | "work_leads"
   | "delete_leads"
+  | "delete_chats"
   | "view_chats"
   | "view_invoices"
   | "create_invoice"

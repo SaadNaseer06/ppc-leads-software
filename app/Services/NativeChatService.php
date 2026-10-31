@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Enums\LeadSource;
+use App\Events\ChatDeleted;
 use App\Events\ChatMessageSent;
+use App\Models\ActivityLog;
 use App\Models\Conversation;
 use App\Models\ConversationMessage;
 use App\Models\Lead;
@@ -148,6 +150,42 @@ class NativeChatService
         $this->broadcast($message);
 
         return $message;
+    }
+
+    /**
+     * Deletes chats with their messages; linked leads stay. Open inboxes and the visitor's
+     * widget are told after the response.
+     *
+     * @param  list<int>  $ids
+     * @return int how many were deleted
+     */
+    public function delete(User $actor, array $ids): int
+    {
+        $conversations = Conversation::query()->visibleTo($actor)->with('lead:id,assignee_id')
+            ->whereIn('id', $ids)->get(['id', 'brand_id', 'lead_id']);
+        if ($conversations->isEmpty()) {
+            return 0;
+        }
+
+        // Messages cascade with their conversation
+        Conversation::whereIn('id', $conversations->pluck('id'))->delete();
+        ActivityLog::record($actor->id, 'chat.delete', 'Conversation',
+            $conversations->count() === 1 ? $conversations->first()->id : null,
+            ['ids' => $conversations->pluck('id')->all()]);
+
+        defer(function () use ($conversations) {
+            try {
+                event(new ChatDeleted(
+                    $conversations->pluck('id')->all(),
+                    $conversations->pluck('brand_id')->filter()->unique()->values()->all(),
+                    $conversations->map(fn ($c) => $c->lead?->assignee_id)->filter()->unique()->values()->all(),
+                ));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
+        return $conversations->count();
     }
 
     public function end(Conversation $conversation): Conversation

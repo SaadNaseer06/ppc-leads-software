@@ -21,6 +21,9 @@
         <env name="APP_ENV" value="testing"/>
         <!-- Never read `php artisan config:cache` output: it points at the real database -->
         <env name="APP_CONFIG_CACHE" value="bootstrap/cache/config.testing.php"/>
+        <!-- ...nor cached routes/events, which can predate the code under test -->
+        <env name="APP_ROUTES_CACHE" value="bootstrap/cache/routes.testing.php"/>
+        <env name="APP_EVENTS_CACHE" value="bootstrap/cache/events.testing.php"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Head, Link, router, usePage } from "@inertiajs/react";
 import {
   ArrowLeft,
   CircleDot,
@@ -88,6 +88,9 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const [ending, setEnding] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Chats ticked in the inbox for deletion
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [removing, setRemoving] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<number | null>(initial.selected?.id ?? null);
   const [now, setNow] = useState(() => new Date());
@@ -98,6 +101,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const lastEventAt = useRef(0);
   const refreshTimer = useRef<number | null>(null);
   const listRef = useRef(list);
+  const dropChatsRef = useRef<(ids: number[], notice: string | null) => void>(() => {});
   const selectedRef = useRef(selected);
   // Super Admin / Developer follow the global inbox feed, admins their brands', reps their own
   const inboxChannels = !user.can.assign_leads
@@ -158,6 +162,11 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       }
       if (!res.ok) return;
       const data = (await res.json()) as ChatsData;
+      const openId = params.id ? Number(params.id) : null;
+      if (openId && !data.selected && selectedIdRef.current === openId) {
+        dropChatsRef.current([openId], "This chat is no longer available. It was deleted or moved.");
+        return;
+      }
       // Events keep the list current, so a difference here is something realtime missed
       if (activityOf(data.conversations) !== activityOf(listRef.current)) {
         lastChange.current = Date.now();
@@ -253,6 +262,31 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     };
   }, [pusher?.key, pusher?.cluster]);
 
+  // useToast() returns a new object each render: a ref keeps the callbacks below stable
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
+  /** Takes deleted chats out of the inbox; leaves the open one if it was among them */
+  const dropChats = useCallback(
+    (ids: number[], notice: string | null) => {
+      const gone = new Set(ids);
+      const prev = listRef.current;
+      const next = prev.filter((c) => !gone.has(c.id));
+      if (next.length === prev.length && !gone.has(selectedIdRef.current ?? 0)) return;
+      listRef.current = next;
+      setList(next);
+      const liveGone = prev.filter((c) => gone.has(c.id) && c.is_live).length;
+      if (liveGone) setOpenCount((n) => Math.max(0, n - liveGone));
+      setPicked((p) => new Set([...p].filter((id) => !gone.has(id))));
+      if (selectedIdRef.current !== null && gone.has(selectedIdRef.current)) {
+        if (notice) toastRef.current.error(notice);
+        router.visit(params.before ? `/chats?${new URLSearchParams({ ...(kind ? { kind } : {}), before: params.before })}` : kind ? `/chats?kind=${kind}` : "/chats", { preserveScroll: true });
+      }
+    },
+    [kind, params.before]
+  );
+  dropChatsRef.current = dropChats;
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
@@ -267,13 +301,16 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     const handler = (payload: ChatEvent) => {
       if (payload?.message) onRealtimeEvent(payload);
     };
+    const onDeleted = (payload: { conversation_ids: number[] }) => dropChats(payload.conversation_ids ?? [], "This chat was deleted by a colleague.");
     channel.listen(".ChatMessageSent", handler);
+    channel.listen(".ChatDeleted", onDeleted);
 
     return () => {
       channel.stopListening(".ChatMessageSent", handler);
+      channel.stopListening(".ChatDeleted", onDeleted);
       echo.leave(channelName);
     };
-  }, [selected?.id, pusher?.key, pusher?.cluster, onRealtimeEvent]);
+  }, [selected?.id, pusher?.key, pusher?.cluster, onRealtimeEvent, dropChats]);
 
   useEffect(() => {
     if (!pusher?.key || !inboxChannels) return;
@@ -282,15 +319,16 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
 
     const names = inboxChannels.split(",");
     const handler = (payload: ChatEvent) => onRealtimeEvent(payload);
+    const onDeleted = (payload: { conversation_ids: number[] }) => dropChats(payload.conversation_ids ?? [], "This chat was deleted by a colleague.");
     for (const name of names) {
-      echo.private(name).listen(".ChatMessageSent", handler);
+      echo.private(name).listen(".ChatMessageSent", handler).listen(".ChatDeleted", onDeleted);
     }
     return () => {
       for (const name of names) {
         echo.leave(name);
       }
     };
-  }, [pusher?.key, pusher?.cluster, inboxChannels, onRealtimeEvent]);
+  }, [pusher?.key, pusher?.cluster, inboxChannels, onRealtimeEvent, dropChats]);
 
   const query = (extra: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -381,6 +419,32 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     void fetchChats();
   }
 
+  async function deleteChats(ids: number[]) {
+    if (ids.length === 0 || removing) return;
+    const one = ids.length === 1;
+    const ok = await confirm({
+      title: one ? "Delete this chat?" : `Delete ${ids.length} chats?`,
+      description: `The conversation${one ? " and its messages are" : "s and their messages are"} removed for everyone. Linked leads stay; delete them separately if needed.`,
+      confirmLabel: one ? "Delete chat" : `Delete ${ids.length} chats`,
+      tone: "danger",
+    });
+    if (!ok) return;
+    setRemoving(true);
+    const res = await apiRequest<{ deleted: number }>("/api/chats/delete", { method: "POST", body: { ids } });
+    setRemoving(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(res.data.deleted === 1 ? "Chat deleted" : `${res.data.deleted} chats deleted`);
+    dropChats(ids, null);
+    syncLive();
+  }
+
+  const canDeleteChats = user.can.delete_chats;
+  const pickedIds = list.filter((c) => picked.has(c.id)).map((c) => c.id);
+  const allPicked = list.length > 0 && pickedIds.length === list.length;
+
   const canReply = Boolean(selected?.can_reply);
   const isNative = selected?.provider === "native";
   const canAssign = user.can.assign_leads && Boolean(selected?.lead);
@@ -456,23 +520,72 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       ) : (
         <div className="card grid overflow-hidden lg:h-[calc(100vh-250px)] lg:min-h-[560px] lg:grid-cols-[360px_1fr]">
           <div className={`flex min-h-0 flex-col border-slate-200 bg-slate-50/40 lg:border-r ${params.id ? "hidden lg:flex" : ""}`}>
-            <div className="border-b border-slate-200 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inbox</p>
-              <p className="mt-0.5 text-sm text-slate-600">
-                {list.length} conversation{list.length === 1 ? "" : "s"}
-                {openCount > 0 ? ` · ${openCount} live` : ""}
-              </p>
+            <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+              {canDeleteChats ? (
+                <input
+                  type="checkbox"
+                  className="checkbox"
+                  checked={allPicked}
+                  onChange={() => setPicked(allPicked ? new Set() : new Set(list.map((c) => c.id)))}
+                  aria-label="Select all chats in the inbox"
+                />
+              ) : null}
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inbox</p>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  {list.length} conversation{list.length === 1 ? "" : "s"}
+                  {openCount > 0 ? ` · ${openCount} live` : ""}
+                </p>
+              </div>
             </div>
+            {pickedIds.length > 0 ? (
+              <div className="flex items-center gap-2 border-b border-red-100 bg-red-50/60 px-4 py-2">
+                <span className="text-sm font-medium text-slate-800">{pickedIds.length} selected</span>
+                <button
+                  type="button"
+                  className="btn-sm ml-auto inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  onClick={() => void deleteChats(pickedIds)}
+                  disabled={removing}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {removing ? "Deleting…" : "Delete"}
+                </button>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => setPicked(new Set())}>
+                  Clear
+                </button>
+              </div>
+            ) : null}
             <ul className="min-h-0 flex-1 overflow-y-auto">
               {list.map((c) => {
                 const active = c.id === selected?.id;
                 return (
-                  <li key={c.id} className="border-b border-slate-100">
+                  <li
+                    key={c.id}
+                    className={`flex border-b border-slate-100 ${
+                      active ? "bg-white shadow-[inset_3px_0_0_0_#0d9488]" : picked.has(c.id) ? "bg-red-50/40" : "hover:bg-white/80"
+                    }`}
+                  >
+                    {canDeleteChats ? (
+                      <label className="flex shrink-0 cursor-pointer items-start pl-4 pt-[18px]">
+                        <input
+                          type="checkbox"
+                          className="checkbox"
+                          checked={picked.has(c.id)}
+                          onChange={() =>
+                            setPicked((p) => {
+                              const next = new Set(p);
+                              if (next.has(c.id)) next.delete(c.id);
+                              else next.add(c.id);
+                              return next;
+                            })
+                          }
+                          aria-label={`Select chat with ${c.display_name}`}
+                        />
+                      </label>
+                    ) : null}
                     <Link
                       href={query({ id: String(c.id), before: params.before })}
-                      className={`flex gap-3 px-4 py-3.5 transition ${
-                        active ? "bg-white shadow-[inset_3px_0_0_0_#0d9488]" : "hover:bg-white/80"
-                      }`}
+                      className={`flex min-w-0 flex-1 gap-3 py-3.5 pr-4 transition ${canDeleteChats ? "pl-3" : "pl-4"}`}
                     >
                       <div className="relative shrink-0">
                         <Avatar name={c.display_name} />
@@ -570,6 +683,17 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                         {deleting ? "Deleting…" : "Delete lead"}
                       </button>
                     ) : null}
+                    {canDeleteChats ? (
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm text-red-600 hover:text-red-700"
+                        onClick={() => void deleteChats([selected.id])}
+                        disabled={removing}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {removing ? "Deleting…" : "Delete chat"}
+                      </button>
+                    ) : null}
                     {selected.lead ? (
                       <Link href={`/leads/${selected.lead.id}`} className="btn-secondary btn-sm">
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -613,9 +737,11 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                   </div>
                 ) : (
                   <div className="border-b border-slate-100 bg-amber-50/70 px-5 py-2.5 text-xs text-amber-900">
-                    {selected.website_id
-                      ? "No lead yet — one is created as soon as the visitor sends a message."
-                      : "This conversation isn't linked to a website yet, so no lead was created."}
+                    {!selected.website_id
+                      ? "This conversation isn't linked to a website yet, so no lead was created."
+                      : messages.some((m) => m.sender_type === "visitor")
+                        ? "No lead is linked to this chat (it may have been deleted). A new lead is created if the visitor writes again."
+                        : "No lead yet — one is created as soon as the visitor sends a message."}
                   </div>
                 )}
 
