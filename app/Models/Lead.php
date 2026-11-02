@@ -59,7 +59,8 @@ class Lead extends Model
             return $query;
         }
         $query->whereIn('leads.brand_id', $user->brandIds());
-        if ($user->role !== Role::Admin && $user->role !== Role::Finance) {
+        // Brand-wide: Admin, Finance, Chat Agent (agents open lead cards from chats)
+        if (! in_array($user->role, [Role::Admin, Role::Finance, Role::ChatAgent], true)) {
             $query->where('leads.assignee_id', $user->id);
         }
 
@@ -81,7 +82,7 @@ class Lead extends Model
             return ['1 = 0', []];
         }
         $sql = 'brand_id IN ('.implode(',', array_fill(0, count($brands), '?')).')';
-        if ($user->role !== Role::Admin && $user->role !== Role::Finance) {
+        if (! in_array($user->role, [Role::Admin, Role::Finance, Role::ChatAgent], true)) {
             return ["{$sql} AND assignee_id = ?", [...$brands, $user->id]];
         }
 

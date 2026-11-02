@@ -4,11 +4,12 @@ import { BarChart3, Loader2, MessageSquare, Users } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 
 const DEMO_ACCOUNTS = [
-  ["superadmin@ppc.local", "Super Admin"],
-  ["admin@ppc.local", "Admin"],
-  ["front1@ppc.local", "Front Sales"],
-  ["upsales@ppc.local", "Up Sales"],
-  ["finance@ppc.local", "Finance"],
+  ["superadmin@ppc.lead", "Super Admin"],
+  ["admin@ppc.lead", "Admin"],
+  ["front1@ppc.lead", "Front Sales"],
+  ["upsales@ppc.lead", "Up Sales"],
+  ["chat@ppc.lead", "Chat Agent"],
+  ["finance@ppc.lead", "Finance"],
 ] as const;
 
 export default function Login({ showDemo }: { showDemo: boolean }) {

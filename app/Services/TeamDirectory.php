@@ -69,6 +69,7 @@ class TeamDirectory
                 'delete_leads' => $user->canDeleteLeads(),
                 'delete_chats' => $user->canDeleteChats(),
                 'view_chats' => $user->canViewChats(),
+                'oversee_chats' => $user->canOverseeBrandChats(),
                 'view_invoices' => $user->canViewInvoices(),
                 'create_invoice' => $user->canCreateInvoice(),
                 'manage_invoices' => $user->canManageInvoices(),

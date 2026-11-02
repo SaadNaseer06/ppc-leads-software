@@ -100,10 +100,19 @@ class User extends Authenticatable
         return $this->canAssignLeads();
     }
 
-    /** Remove chats, e.g. test conversations (Admins only within their brands) */
+    /**
+     * Sees every chat in their brands (not only chats tied to their assigned leads).
+     * Chat Agents live here: they staff the inbox across the brand.
+     */
+    public function canOverseeBrandChats(): bool
+    {
+        return $this->canAssignLeads() || $this->role === Role::ChatAgent;
+    }
+
+    /** Remove chats, e.g. test conversations (brand overseers) */
     public function canDeleteChats(): bool
     {
-        return $this->canAssignLeads();
+        return $this->canOverseeBrandChats();
     }
 
     public function canCreateLeads(): bool
@@ -113,7 +122,7 @@ class User extends Authenticatable
 
     public function canWorkLeads(): bool
     {
-        return $this->role !== Role::Finance;
+        return ! in_array($this->role, [Role::Finance, Role::ChatAgent], true);
     }
 
     public function canViewChats(): bool

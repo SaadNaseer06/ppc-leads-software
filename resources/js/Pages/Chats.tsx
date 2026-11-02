@@ -103,8 +103,8 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const listRef = useRef(list);
   const dropChatsRef = useRef<(ids: number[], notice: string | null) => void>(() => {});
   const selectedRef = useRef(selected);
-  // Super Admin / Developer follow the global inbox feed, admins their brands', reps their own
-  const inboxChannels = !user.can.assign_leads
+  // Super Admin / Developer: global feed; admins & chat agents: brand feeds; sales: own inbox
+  const inboxChannels = !user.can.oversee_chats
     ? `chats.user.${user.id}`
     : user.can.manage_brands
       ? "chats.all"
@@ -506,7 +506,9 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
             description={
               user.can.manage_websites
                 ? "Add the chat widget snippet on a website. Visitor messages appear here so you can reply from this dashboard."
-                : "Chats from visitors whose leads are assigned to you will appear here."
+                : user.can.oversee_chats
+                  ? "Live chats from websites in your brands will appear here."
+                  : "Chats from visitors whose leads are assigned to you will appear here."
             }
             action={
               user.can.manage_websites ? (

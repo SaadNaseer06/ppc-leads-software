@@ -26,7 +26,7 @@ Broadcast::channel('chats.user.{userId}', function ($user, string $userId) {
 // Brand-wide inbox feeds carry every message, so only people who see every chat of the brand
 // may listen; sales reps follow their own chats through chats.user.{id}
 Broadcast::channel('chats.{brandId}', function ($user, string $brandId) {
-    return ctype_digit($brandId) && $user->canAssignLeads() && $user->canAccessBrand((int) $brandId);
+    return ctype_digit($brandId) && $user->canOverseeBrandChats() && $user->canAccessBrand((int) $brandId);
 });
 
 // "Lead counts changed" pings (no data): global users, a brand's admins and finance, and

@@ -90,7 +90,7 @@ class LeadQuery
      */
     public function brandSplit(User $user, array $f): ?array
     {
-        if ($user->role !== Role::Admin && $user->role !== Role::Finance) {
+        if (! in_array($user->role, [Role::Admin, Role::Finance, Role::ChatAgent], true)) {
             return null;
         }
         // These filters already narrow to a single ordered index range (or use FULLTEXT)

@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            // SUPER_ADMIN | ADMIN | FRONT_SALES | UP_SALES | FINANCE | DEVELOPER
+            // SUPER_ADMIN | ADMIN | FRONT_SALES | UP_SALES | CHAT_AGENT | FINANCE | DEVELOPER
             $table->string('role', 20);
             $table->boolean('active')->default(true);
             $table->foreignId('admin_id')->nullable()->constrained('users')->nullOnDelete();

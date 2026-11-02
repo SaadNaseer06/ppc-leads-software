@@ -19,10 +19,13 @@ export type NavItem = { key: NavKey; href: string; label: string; section: "main
 export function navItemsFor(user: CurrentUser): NavItem[] {
   const items: NavItem[] = [
     { key: "dashboard", href: "/dashboard", label: "Dashboard", section: "main" },
-    { key: "leads", href: "/leads", label: "Leads", section: "main" },
   ];
   const can = user.can;
 
+  // Chat agents staff the inbox; everyone else keeps the leads list
+  if (user.role !== "CHAT_AGENT") {
+    items.push({ key: "leads", href: "/leads", label: "Leads", section: "main" });
+  }
   if (can.view_chats) items.push({ key: "chats", href: "/chats", label: "Chats", section: "main" });
   if (can.view_invoices) items.push({ key: "invoices", href: "/invoices", label: "Invoices", section: "main" });
   if (can.view_finance) items.push({ key: "finance", href: "/finance", label: "Finance", section: "main" });

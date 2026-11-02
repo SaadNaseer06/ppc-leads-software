@@ -8,6 +8,7 @@ enum Role: string
     case Admin = 'ADMIN';
     case FrontSales = 'FRONT_SALES';
     case UpSales = 'UP_SALES';
+    case ChatAgent = 'CHAT_AGENT';
     case Finance = 'FINANCE';
     case Developer = 'DEVELOPER';
 
@@ -18,6 +19,7 @@ enum Role: string
             self::Admin => 'Admin',
             self::FrontSales => 'Front Sales',
             self::UpSales => 'Up Sales',
+            self::ChatAgent => 'Chat Agent',
             self::Finance => 'Finance',
             self::Developer => 'Developer',
         };
@@ -43,7 +45,7 @@ enum Role: string
     /** @return list<self> Roles an Admin may hand out to the people they manage */
     public static function adminGrantable(): array
     {
-        return [self::FrontSales, self::UpSales, self::Finance];
+        return [self::FrontSales, self::UpSales, self::ChatAgent, self::Finance];
     }
 
     /** @return list<string> */

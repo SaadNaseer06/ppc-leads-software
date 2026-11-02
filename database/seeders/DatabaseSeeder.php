@@ -90,6 +90,7 @@ class DatabaseSeeder extends Seeder
         $user('front2@ppc.lead', 'Taylor Brooks', Role::FrontSales /*, [$apex->id], $admin->id */);
         $user('front3@ppc.lead', 'Riley Chen', Role::FrontSales /*, [$lumen->id], $admin->id */);
         $user('upsales@ppc.lead', 'Casey Patel', Role::UpSales /*, [$apex->id, $lumen->id] */);
+        $user('chat@ppc.lead', 'Jamie Fox', Role::ChatAgent /*, [$apex->id, $lumen->id] */);
         $user('finance@ppc.lead', 'Morgan Ellis', Role::Finance /*, [$apex->id, $lumen->id] */);
         $user('dev@ppc.lead', 'Dev Account', Role::Developer);
         // $repsFor = [$apex->id => [$front1->id, $front2->id], $lumen->id => [$front3->id]];

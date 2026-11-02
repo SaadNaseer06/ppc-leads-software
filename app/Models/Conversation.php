@@ -50,7 +50,8 @@ class Conversation extends Model
         if ($user->hasGlobalAccess()) {
             return $query;
         }
-        if ($user->role === Role::Admin) {
+        // Admins and Chat Agents staff every conversation in their brands
+        if ($user->role === Role::Admin || $user->role === Role::ChatAgent) {
             return $query->whereIn('brand_id', $user->brandIds());
         }
         if ($user->isSales()) {
