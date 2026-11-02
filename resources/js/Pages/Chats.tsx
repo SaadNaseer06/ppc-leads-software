@@ -473,7 +473,12 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const isNative = selected?.provider === "native";
   const canAssign = user.can.assign_leads && Boolean(selected?.lead);
   const canDelete = user.can.delete_leads && Boolean(selected?.lead);
-  const canConvert = user.can.convert_chats && Boolean(selected?.can_convert);
+  // Admins + chat agents (role fallback if an older session payload lacks convert_chats)
+  const canConvertByRole =
+    user.role === "SUPER_ADMIN" || user.role === "ADMIN" || user.role === "CHAT_AGENT" || user.role === "DEVELOPER";
+  const canConvert =
+    (user.can.convert_chats ?? canConvertByRole) &&
+    (selected?.can_convert ?? Boolean(selected && !selected.lead));
   const location = selected ? [selected.city, selected.country].filter(Boolean).join(", ") : "";
 
   return (
@@ -736,17 +741,6 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                   </div>
                 </div>
 
-                {canConvert && !selected.lead ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-teal-100 bg-teal-50/70 px-5 py-2.5 text-xs text-teal-900">
-                    <p>
-                      This chat is not on the Leads page yet. Convert it when the visitor is ready for sales follow-up.
-                    </p>
-                    <button type="button" className="btn-primary btn-sm shrink-0" onClick={() => void convertToLead()} disabled={converting}>
-                      <UserPlus className="h-3.5 w-3.5" />
-                      {converting ? "Converting…" : "Convert to lead"}
-                    </button>
-                  </div>
-                ) : null}
                 {selected.lead ? (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-100 bg-slate-50/80 px-5 py-2.5 text-xs text-slate-600">
                     <span>
@@ -779,13 +773,23 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                       </span>
                     )}
                   </div>
+                ) : canConvert ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-teal-100 bg-teal-50/80 px-5 py-3 text-xs text-teal-950">
+                    <p className="min-w-0 flex-1 leading-relaxed">
+                      This chat is not on the Leads page yet. Convert it when the visitor is ready for sales follow-up.
+                    </p>
+                    <button type="button" className="btn-primary btn-sm shrink-0" onClick={() => void convertToLead()} disabled={converting}>
+                      <UserPlus className="h-3.5 w-3.5" />
+                      {converting ? "Converting…" : "Convert to lead"}
+                    </button>
+                  </div>
                 ) : (
                   <div className="border-b border-slate-100 bg-amber-50/70 px-5 py-2.5 text-xs text-amber-900">
                     {!selected.website_id
-                      ? "This conversation isn't linked to a website yet, so no lead was created."
+                      ? "This conversation isn't linked to a website yet, so it can't become a lead."
                       : messages.some((m) => m.sender_type === "visitor")
-                        ? "No lead is linked to this chat (it may have been deleted). A new lead is created if the visitor writes again."
-                        : "No lead yet — one is created as soon as the visitor sends a message."}
+                        ? "No lead on the Leads page yet. An admin or chat agent can convert this chat."
+                        : "No lead yet — waiting for the visitor to send a message."}
                   </div>
                 )}
 
