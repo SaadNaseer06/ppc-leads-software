@@ -170,7 +170,9 @@ export type ChatsData = {
           status: string;
           assignee: string | null;
           assignee_id: number | null;
+          promoted?: boolean;
         } | null;
+        can_convert?: boolean;
       })
     | null;
   assignees: Assignee[];

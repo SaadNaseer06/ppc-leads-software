@@ -18,8 +18,20 @@ class Lead extends Model
             'metadata' => 'array',
             'assigned_at' => 'datetime',
             'last_activity_at' => 'datetime',
+            'promoted_at' => 'datetime',
             'submission_count' => 'integer',
         ];
+    }
+
+    /** Form / manual / converted chat leads that belong on the Leads page */
+    public function scopeInInbox(Builder $query): Builder
+    {
+        return $query->whereNotNull('leads.promoted_at');
+    }
+
+    public function isInInbox(): bool
+    {
+        return $this->promoted_at !== null;
     }
 
     public function brand(): BelongsTo

@@ -17,12 +17,12 @@ class LiveCounts
     {
         return [
             'new_leads' => $since
-                ? $this->capped(Lead::query()->visibleTo($user)->where('created_at', '>', $since)->where('status', '!=', LeadStatus::Spam->value), 100)
+                ? $this->capped(Lead::query()->visibleTo($user)->inInbox()->where('created_at', '>', $since)->where('status', '!=', LeadStatus::Spam->value), 100)
                 : 0,
             'unassigned' => $user->canAssignLeads()
-                ? $this->capped(Lead::query()->visibleTo($user)->whereNull('assignee_id')->where('status', LeadStatus::New->value), 1000)
+                ? $this->capped(Lead::query()->visibleTo($user)->inInbox()->whereNull('assignee_id')->where('status', LeadStatus::New->value), 1000)
                 : 0,
-            'my_new' => $this->capped(Lead::where('assignee_id', $user->id)->where('status', LeadStatus::New->value), 1000),
+            'my_new' => $this->capped(Lead::query()->inInbox()->where('assignee_id', $user->id)->where('status', LeadStatus::New->value), 1000),
             'active_chats' => $user->canViewChats()
                 ? $this->capped(Conversation::query()->visibleTo($user)->live(), 1000)
                 : 0,

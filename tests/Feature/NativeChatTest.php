@@ -21,7 +21,7 @@ class NativeChatTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_visitor_chat_creates_a_lead_and_survives_a_realtime_outage(): void
+    public function test_a_visitor_chat_stays_off_leads_until_converted_and_survives_a_realtime_outage(): void
     {
         // Pusher down: broadcasting throws, yet the visitor and the agent can still talk
         Broadcast::extend('down', fn () => new class extends Broadcaster
@@ -45,13 +45,22 @@ class NativeChatTest extends TestCase
         $this->postJson('/api/chat/messages', ['visitor_token' => $token, 'body' => 'Hello?'])->assertCreated();
 
         $conversation = Conversation::firstOrFail();
-        $this->assertSame('Ada', $conversation->lead->name);
-        $this->assertSame('ppc', $conversation->lead->channel);
+        $this->assertNull($conversation->lead_id);
+        $this->assertSame(0, Lead::query()->inInbox()->count());
 
         $this->actingAs($this->user(Role::Admin, [$brand]));
         $this->postJson("/api/chats/{$conversation->id}/messages", ['body' => 'Hi Ada!'])->assertCreated();
         $this->getJson("/api/chat/messages?visitor_token={$token}")->assertOk()->assertJsonCount(2, 'messages');
-        $this->getJson('/api/chats')->assertOk()->assertJsonPath('open_count', 1)->assertJsonPath('conversations.0.is_live', true);
+        $this->getJson('/api/chats')->assertOk()->assertJsonPath('open_count', 1)->assertJsonPath('conversations.0.is_live', true)
+            ->assertJsonPath('selected.can_convert', true);
+
+        $this->postJson("/api/chats/{$conversation->id}/convert")->assertOk();
+        $conversation->refresh();
+        $this->assertSame('Ada', $conversation->lead->name);
+        $this->assertSame('ppc', $conversation->lead->channel);
+        $this->assertNotNull($conversation->lead->promoted_at);
+        $this->assertSame(1, Lead::query()->inInbox()->count());
+        $this->getJson('/api/leads')->assertOk()->assertJsonPath('total', 1);
     }
 
     public function test_idle_chats_are_closed_and_stop_counting_as_live(): void
@@ -131,6 +140,7 @@ class NativeChatTest extends TestCase
         $conversation = $chat->session($site, null)['conversation'];
         $chat->updateVisitor($conversation, 'Ada', null);
         $chat->visitorMessage($conversation, 'Hi');
+        $chat->convertToLead($conversation, $rep);
         Lead::whereKey($conversation->fresh()->lead_id)->update(['assignee_id' => $rep->id]);
 
         $long = $conversation->messages()->create(['sender_type' => 'visitor', 'body' => str_repeat('é', 5000), 'sent_at' => now()]);
@@ -172,6 +182,8 @@ class NativeChatTest extends TestCase
         $chat = app(NativeChatService::class);
         $session = $chat->session($site, null);
         $chat->visitorMessage($session['conversation'], 'Test message');
+        $admin = $this->user(Role::Admin, [$brand]);
+        $chat->convertToLead($session['conversation'], $admin);
         $conversation = $session['conversation']->fresh();
         $elsewhere = $chat->session($otherSite, null)['conversation'];
         $chat->visitorMessage($elsewhere, 'Other brand');
@@ -182,7 +194,7 @@ class NativeChatTest extends TestCase
         $this->actingAs($this->user(Role::Admin, [$other]));
         $this->postJson('/api/chats/delete', ['ids' => [$conversation->id]])->assertNotFound();
 
-        $this->actingAs($this->user(Role::Admin, [$brand]));
+        $this->actingAs($admin);
         $this->postJson('/api/chats/delete', ['ids' => [$conversation->id, $elsewhere->id]])
             ->assertOk()->assertJsonPath('deleted', 1); // the other brand's chat isn't theirs to delete
         $this->assertNull($conversation->fresh());

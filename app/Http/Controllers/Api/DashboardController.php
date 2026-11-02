@@ -23,7 +23,7 @@ class DashboardController extends Controller
 
         return response()->json([
             'stats' => $dashboard->data($user, (int) $request->query('range', 30)),
-            'recent_leads' => Lead::query()->visibleTo($user)
+            'recent_leads' => Lead::query()->visibleTo($user)->inInbox()
                 ->where('status', '!=', LeadStatus::Spam->value)
                 ->with(['website:id,name', 'assignee:id,name'])
                 ->orderByDesc('created_at')->orderByDesc('id')->limit(7)

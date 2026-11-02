@@ -11,6 +11,7 @@ import {
   MessageSquareOff,
   Trash2,
   TriangleAlert,
+  UserPlus,
 } from "lucide-react";
 import type { Assignee, ChatMessage, ChatsData, ConversationRow } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
@@ -88,6 +89,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const [ending, setEnding] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [converting, setConverting] = useState(false);
   // Chats ticked in the inbox for deletion
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [removing, setRemoving] = useState(false);
@@ -380,6 +382,28 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     void fetchChats();
   }
 
+  async function convertToLead() {
+    if (!selected || converting) return;
+    const ok = await confirm({
+      title: "Convert this chat to a lead?",
+      description: "The visitor will appear on the Leads page so sales can follow up. The chat stays here.",
+      confirmLabel: "Convert to lead",
+    });
+    if (!ok) return;
+    setConverting(true);
+    const res = await apiRequest<{ lead: NonNullable<SelectedChat["lead"]> }>(`/api/chats/${selected.id}/convert`, {
+      method: "POST",
+    });
+    setConverting(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Lead created on the Leads page");
+    syncLive();
+    void fetchChats();
+  }
+
   async function assignLead(assigneeId: number | null) {
     if (!selected?.lead || assigning) return;
     setAssigning(true);
@@ -449,6 +473,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const isNative = selected?.provider === "native";
   const canAssign = user.can.assign_leads && Boolean(selected?.lead);
   const canDelete = user.can.delete_leads && Boolean(selected?.lead);
+  const canConvert = Boolean(selected?.can_convert);
   const location = selected ? [selected.city, selected.country].filter(Boolean).join(", ") : "";
 
   return (
@@ -674,6 +699,12 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    {canConvert ? (
+                      <button type="button" className="btn-primary btn-sm" onClick={() => void convertToLead()} disabled={converting}>
+                        <UserPlus className="h-3.5 w-3.5" />
+                        {converting ? "Converting…" : "Convert to lead"}
+                      </button>
+                    ) : null}
                     {isNative && selected.status === "open" ? (
                       <button type="button" className="btn-ghost btn-sm" onClick={endChat} disabled={ending}>
                         {ending ? "Ending…" : "End chat"}

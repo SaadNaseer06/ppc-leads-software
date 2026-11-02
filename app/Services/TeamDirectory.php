@@ -33,7 +33,7 @@ class TeamDirectory
             return [];
         }
 
-        $open = Lead::whereIn('assignee_id', $users->pluck('id'))
+        $open = Lead::query()->inInbox()->whereIn('assignee_id', $users->pluck('id'))
             ->whereIn('status', LeadStatus::open())
             ->groupBy('assignee_id')
             ->selectRaw('assignee_id, COUNT(*) AS n')

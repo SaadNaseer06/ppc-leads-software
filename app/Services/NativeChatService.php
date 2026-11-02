@@ -6,6 +6,7 @@ use App\Enums\LeadSource;
 use App\Events\ChatDeleted;
 use App\Events\ChatMessageSent;
 use App\Models\ActivityLog;
+use App\Models\Brand;
 use App\Models\Conversation;
 use App\Models\ConversationMessage;
 use App\Models\Lead;
@@ -118,7 +119,7 @@ class NativeChatService
             $conversation->website->update(['last_chat_at' => $at]);
         }
 
-        $this->ensureLead($conversation);
+        // Lead is created only when a chat agent converts the conversation onto the Leads page
         $this->broadcast($message);
 
         return $message;
@@ -245,13 +246,23 @@ class NativeChatService
     }
 
     /**
-     * Creates (or links) a lead on the first visitor message — same pattern as Tawk.
+     * Creates (or links) a lead for this conversation. Pass $promote to put it on the Leads page.
      */
-    public function ensureLead(Conversation $conversation): ?int
+    public function ensureLead(Conversation $conversation, bool $promote = false): ?int
     {
         $conversation->refresh();
-        if ($conversation->lead_id || ! $conversation->website_id) {
+        if ($conversation->lead_id) {
+            if ($promote) {
+                $this->promoteLead(
+                    $conversation->relationLoaded('lead') ? $conversation->lead : Lead::find($conversation->lead_id),
+                    $conversation
+                );
+            }
+
             return $conversation->lead_id;
+        }
+        if (! $conversation->website_id) {
+            return null;
         }
         $firstMessage = $conversation->messages()->where('sender_type', 'visitor')->orderBy('sent_at')->value('body');
         $website = $conversation->website;
@@ -268,11 +279,60 @@ class NativeChatService
             'form_name' => 'Live chat',
             'attribution' => Attribution::merge(Attribution::fromUrl($conversation->page_url), ['page_url' => $conversation->page_url]),
             'extra_fields' => $location ? ['Location' => $location] : [],
+            'promote' => $promote,
         ]);
 
         $conversation->update(['lead_id' => $result['lead_id']]);
 
         return $result['lead_id'];
+    }
+
+    /**
+     * Chat agent converts a conversation into a Leads-page lead (create if needed, then promote).
+     */
+    public function convertToLead(Conversation $conversation, User $actor): Lead
+    {
+        abort_unless(
+            $conversation->messages()->where('sender_type', 'visitor')->exists(),
+            422,
+            'Wait for the visitor to send a message before converting this chat.'
+        );
+
+        $leadId = $this->ensureLead($conversation, promote: true);
+        abort_unless($leadId, 422, 'This chat cannot be converted to a lead yet.');
+
+        $lead = Lead::query()->findOrFail($leadId);
+        ActivityLog::record($actor->id, 'chat.convert_lead', 'Lead', $lead->id, [
+            'conversation_id' => $conversation->id,
+        ]);
+
+        return $lead;
+    }
+
+    private function promoteLead(?Lead $lead, Conversation $conversation): void
+    {
+        if (! $lead || $lead->isInInbox()) {
+            return;
+        }
+
+        $lead->update(['promoted_at' => now(), 'last_activity_at' => now()]);
+        $lead->activities()->create([
+            'type' => 'promoted',
+            'data' => ['conversation_id' => $conversation->id],
+        ]);
+
+        // Route into the sales queue now that the lead is on the Leads page
+        $assigneeId = $lead->assignee_id;
+        if (! $assigneeId) {
+            try {
+                if (Brand::whereKey($lead->brand_id)->value('auto_assign_enabled')) {
+                    $assigneeId = app(LeadAssignment::class)->autoAssign($lead->fresh());
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+        app(LiveSignal::class)->leads((int) $lead->brand_id, $assigneeId);
     }
 
     public function syncLeadContact(Conversation $conversation): void

@@ -47,7 +47,7 @@ class LeadQuery
     /** Visibility plus filters. Spam is hidden unless explicitly asked for. */
     public function query(User $user, array $f): Builder
     {
-        $q = Lead::query()->visibleTo($user);
+        $q = Lead::query()->visibleTo($user)->inInbox();
 
         isset($f['status']) ? $q->where('leads.status', $f['status']) : $q->where('leads.status', '!=', 'spam');
         foreach (['source' => 'source', 'channel' => 'channel', 'website' => 'website_id', 'brand' => 'brand_id'] as $key => $column) {

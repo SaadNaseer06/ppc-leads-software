@@ -56,13 +56,21 @@ class LeadIntake
 
             if ($existing) {
                 $this->recordResubmission($existing, $website, $source, $email, $phone, $company, $message, $input, $attribution, $extra);
-                $this->live->leads($brandId, $existing->assignee_id);
+                if (($input['promote'] ?? false) && ! $existing->promoted_at) {
+                    $existing->update(['promoted_at' => now()]);
+                }
+                if ($existing->fresh()->promoted_at) {
+                    $this->live->leads($brandId, $existing->assignee_id);
+                }
 
                 return ['lead_id' => $existing->id, 'duplicate' => true, 'assignee_id' => $existing->assignee_id];
             }
         }
 
-        $lead = DB::transaction(function () use ($brandId, $website, $source, $name, $email, $phone, $phoneKey, $company, $message, $attribution, $extra, $input) {
+        // Live chat stays off the Leads page until a chat agent converts it (`promote` => true)
+        $promotedAt = ($source !== LeadSource::Chat || ($input['promote'] ?? false)) ? now() : null;
+
+        $lead = DB::transaction(function () use ($brandId, $website, $source, $name, $email, $phone, $phoneKey, $company, $message, $attribution, $extra, $input, $promotedAt) {
             $lead = Lead::create([
                 'brand_id' => $brandId,
                 'website_id' => $website?->id,
@@ -90,11 +98,12 @@ class LeadIntake
                 'metadata' => $extra ? ['fields' => $extra] : null,
                 'search_text' => LeadText::searchText($name, $email, $phone, $company),
                 'last_activity_at' => now(),
+                'promoted_at' => $promotedAt,
             ]);
             $lead->activities()->create([
                 'actor_id' => $input['actor_id'] ?? null,
                 'type' => 'created',
-                'data' => ['source' => $source->value, 'website_id' => $website?->id],
+                'data' => ['source' => $source->value, 'website_id' => $website?->id, 'promoted' => $promotedAt !== null],
             ]);
 
             return $lead;
@@ -102,6 +111,11 @@ class LeadIntake
 
         $this->touchWebsite($website, $source);
         Log::info('Lead created', ['lead_id' => $lead->id, 'source' => $source->value, 'website_id' => $website?->id]);
+
+        // Unpromoted chat leads stay in Chats only — no sales routing or Leads badges yet
+        if ($promotedAt === null) {
+            return ['lead_id' => $lead->id, 'duplicate' => false, 'assignee_id' => null];
+        }
 
         $assigneeId = null;
         if (! empty($input['assignee_id'])) {

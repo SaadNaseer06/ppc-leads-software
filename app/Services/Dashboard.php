@@ -31,7 +31,7 @@ class Dashboard
         $buckets = collect(DB::select(
             "SELECT DATE(CONVERT_TZ(created_at, '+00:00', ?)) AS day, status, channel, website_id, COUNT(*) AS n
              FROM leads
-             WHERE created_at >= ? AND {$visibilitySql}
+             WHERE created_at >= ? AND promoted_at IS NOT NULL AND {$visibilitySql}
              GROUP BY day, status, channel, website_id",
             [$today->format('P'), $prevStart->utc(), ...$bindings],
         ))->map(fn ($r) => [
@@ -57,7 +57,7 @@ class Dashboard
 
         $team = [];
         if ($user->canAssignLeads()) {
-            $rows = Lead::query()->visibleTo($user)
+            $rows = Lead::query()->visibleTo($user)->inInbox()
                 ->where('created_at', '>=', $firstDay->utc())
                 ->where('status', '!=', LeadStatus::Spam->value)
                 ->whereNotNull('assignee_id')
@@ -81,9 +81,9 @@ class Dashboard
             'converted' => $current->where('status', LeadStatus::Converted->value)->sum('n'),
             'ppc' => $real->where('channel', Channel::Ppc->value)->sum('n'),
             'unassigned' => $user->canAssignLeads()
-                ? Lead::query()->visibleTo($user)->whereNull('assignee_id')->where('status', LeadStatus::New->value)->count()
+                ? Lead::query()->visibleTo($user)->inInbox()->whereNull('assignee_id')->where('status', LeadStatus::New->value)->count()
                 : 0,
-            'my_open' => Lead::where('assignee_id', $user->id)->whereIn('status', LeadStatus::open())->count(),
+            'my_open' => Lead::query()->inInbox()->where('assignee_id', $user->id)->whereIn('status', LeadStatus::open())->count(),
             'series' => $series,
             'websites' => $perWebsite->map(fn ($n, $id) => [
                 'id' => $id ?: null,

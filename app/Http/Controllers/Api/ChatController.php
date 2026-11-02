@@ -62,11 +62,13 @@ class ChatController extends Controller
                 ...$this->row($selected),
                 ...$selected->only(['visitor_name', 'visitor_email', 'city', 'country', 'subject', 'started_at', 'website_id', 'brand_id', 'page_url']),
                 'messages' => $selected->messages->map->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
-                'lead' => $selected->lead ? [
+                'lead' => $selected->lead && $selected->lead->isInInbox() ? [
                     ...$selected->lead->only(['id', 'name', 'status', 'assignee_id']),
                     'assignee' => $selected->lead->assignee?->name,
                     'assignee_id' => $selected->lead->assignee_id,
+                    'promoted' => true,
                 ] : null,
+                'can_convert' => ! $selected->lead?->isInInbox(),
             ] : null,
             'assignees' => $assignees,
             'open_count' => $openCount,
@@ -105,6 +107,28 @@ class ChatController extends Controller
             'ok' => true,
             'status' => $conversation->status,
             'ended_at' => $conversation->ended_at,
+        ]);
+    }
+
+    /** Move a chat onto the Leads page (chat agents / anyone who can see the conversation) */
+    public function convert(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canViewChats(), 403);
+
+        $conversation = Conversation::query()->visibleTo($user)->findOrFail($id);
+        $lead = $this->native->convertToLead($conversation, $user)->load('assignee:id,name');
+
+        return response()->json([
+            'ok' => true,
+            'lead' => [
+                'id' => $lead->id,
+                'name' => $lead->name,
+                'status' => $lead->status,
+                'assignee_id' => $lead->assignee_id,
+                'assignee' => $lead->assignee?->name,
+                'promoted' => true,
+            ],
         ]);
     }
 
