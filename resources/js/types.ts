@@ -8,6 +8,7 @@ export type Permission =
   | "delete_chats"
   | "view_chats"
   | "oversee_chats"
+  | "convert_chats"
   | "view_invoices"
   | "create_invoice"
   | "manage_invoices"

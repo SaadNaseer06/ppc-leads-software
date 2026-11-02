@@ -63,6 +63,32 @@ class NativeChatTest extends TestCase
         $this->getJson('/api/leads')->assertOk()->assertJsonPath('total', 1);
     }
 
+    public function test_admins_and_chat_agents_can_convert_chats_to_leads(): void
+    {
+        $brand = $this->brand();
+        $site = $this->website($brand);
+        $chat = app(NativeChatService::class);
+
+        $forAdmin = $chat->session($site, null)['conversation'];
+        $chat->visitorMessage($forAdmin, 'Need a quote');
+        $forAgent = $chat->session($site, null)['conversation'];
+        $chat->visitorMessage($forAgent, 'Can you help?');
+        $forRep = $chat->session($site, null)['conversation'];
+        $chat->visitorMessage($forRep, 'Sales question');
+
+        $this->actingAs($this->user(Role::FrontSales, [$brand]));
+        $this->postJson("/api/chats/{$forRep->id}/convert")->assertForbidden();
+
+        $this->actingAs($this->user(Role::Admin, [$brand]));
+        $this->getJson("/api/chats?id={$forAdmin->id}")->assertOk()->assertJsonPath('selected.can_convert', true);
+        $this->postJson("/api/chats/{$forAdmin->id}/convert")->assertOk()->assertJsonPath('lead.promoted', true);
+
+        $this->actingAs($this->user(Role::ChatAgent, [$brand]));
+        $this->getJson("/api/chats?id={$forAgent->id}")->assertOk()->assertJsonPath('selected.can_convert', true);
+        $this->postJson("/api/chats/{$forAgent->id}/convert")->assertOk()->assertJsonPath('lead.promoted', true);
+        $this->assertSame(2, Lead::query()->inInbox()->count());
+    }
+
     public function test_idle_chats_are_closed_and_stop_counting_as_live(): void
     {
         $brand = $this->brand();

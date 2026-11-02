@@ -68,7 +68,8 @@ class ChatController extends Controller
                     'assignee_id' => $selected->lead->assignee_id,
                     'promoted' => true,
                 ] : null,
-                'can_convert' => ! $selected->lead?->isInInbox(),
+                // Admins and Chat Agents can promote an unconverted chat onto the Leads page
+                'can_convert' => $user->canConvertChatsToLeads() && ! $selected->lead?->isInInbox(),
             ] : null,
             'assignees' => $assignees,
             'open_count' => $openCount,
@@ -110,11 +111,11 @@ class ChatController extends Controller
         ]);
     }
 
-    /** Move a chat onto the Leads page (chat agents / anyone who can see the conversation) */
+    /** Move a chat onto the Leads page (Admins and Chat Agents) */
     public function convert(Request $request, int $id): JsonResponse
     {
         $user = $request->user();
-        abort_unless($user->canViewChats(), 403);
+        abort_unless($user->canConvertChatsToLeads(), 403);
 
         $conversation = Conversation::query()->visibleTo($user)->findOrFail($id);
         $lead = $this->native->convertToLead($conversation, $user)->load('assignee:id,name');

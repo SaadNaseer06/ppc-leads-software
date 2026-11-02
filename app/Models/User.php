@@ -115,6 +115,12 @@ class User extends Authenticatable
         return $this->canOverseeBrandChats();
     }
 
+    /** Promote a chat onto the Leads page (Admins and Chat Agents) */
+    public function canConvertChatsToLeads(): bool
+    {
+        return $this->hasGlobalAccess() || in_array($this->role, [Role::Admin, Role::ChatAgent], true);
+    }
+
     public function canCreateLeads(): bool
     {
         return $this->canAssignLeads() || $this->isSales();

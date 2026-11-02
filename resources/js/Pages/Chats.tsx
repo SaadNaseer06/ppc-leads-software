@@ -473,7 +473,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const isNative = selected?.provider === "native";
   const canAssign = user.can.assign_leads && Boolean(selected?.lead);
   const canDelete = user.can.delete_leads && Boolean(selected?.lead);
-  const canConvert = Boolean(selected?.can_convert);
+  const canConvert = user.can.convert_chats && Boolean(selected?.can_convert);
   const location = selected ? [selected.city, selected.country].filter(Boolean).join(", ") : "";
 
   return (
@@ -736,6 +736,17 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                   </div>
                 </div>
 
+                {canConvert && !selected.lead ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-teal-100 bg-teal-50/70 px-5 py-2.5 text-xs text-teal-900">
+                    <p>
+                      This chat is not on the Leads page yet. Convert it when the visitor is ready for sales follow-up.
+                    </p>
+                    <button type="button" className="btn-primary btn-sm shrink-0" onClick={() => void convertToLead()} disabled={converting}>
+                      <UserPlus className="h-3.5 w-3.5" />
+                      {converting ? "Converting…" : "Convert to lead"}
+                    </button>
+                  </div>
+                ) : null}
                 {selected.lead ? (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-100 bg-slate-50/80 px-5 py-2.5 text-xs text-slate-600">
                     <span>
