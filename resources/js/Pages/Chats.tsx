@@ -9,11 +9,12 @@ import {
   MapPin,
   MessageSquare,
   MessageSquareOff,
+  Send,
   Trash2,
   TriangleAlert,
   UserPlus,
 } from "lucide-react";
-import type { Assignee, ChatMessage, ChatsData, ConversationRow } from "@/lib/api-types";
+import type { Assignee, ChatMessage, ChatsData, ConversationRow, FrontSalesRep } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
 import { formatDateTime, formatRelative, formatTime } from "@/lib/format";
 import { PageHeader, EmptyState } from "@/components/ui/page-header";
@@ -23,6 +24,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
 import { useLiveSync } from "@/components/app-shell/live-provider";
 import { getEcho } from "@/lib/echo";
+import { TransferDialog } from "./Chats/partials/transfer-dialog";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -80,6 +82,8 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const [hasMore, setHasMore] = useState(initial.has_more);
   const [selected, setSelected] = useState<SelectedChat | null>(initial.selected);
   const [assignees, setAssignees] = useState<Assignee[]>(initial.assignees ?? []);
+  const [frontSales, setFrontSales] = useState<FrontSalesRep[]>(initial.front_sales ?? []);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [unlinked, setUnlinked] = useState(initial.unlinked);
   const [openCount, setOpenCount] = useState(initial.open_count ?? 0);
   const [pusher, setPusher] = useState(initial.pusher);
@@ -122,6 +126,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     setUnlinked(data.unlinked);
     setOpenCount(data.open_count ?? 0);
     setAssignees(data.assignees ?? []);
+    setFrontSales(data.front_sales ?? []);
     if (data.pusher) setPusher(data.pusher);
 
     const next = data.selected;
@@ -321,16 +326,21 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
 
     const names = inboxChannels.split(",");
     const handler = (payload: ChatEvent) => onRealtimeEvent(payload);
+    // A chat handed to this rep lands in their inbox straight away
+    const onTransferred = (payload: { conversation?: ConversationRow }) => {
+      lastEventAt.current = Date.now();
+      if (payload.conversation) upsertRow(payload.conversation);
+    };
     const onDeleted = (payload: { conversation_ids: number[] }) => dropChats(payload.conversation_ids ?? [], "This chat was deleted by a colleague.");
     for (const name of names) {
-      echo.private(name).listen(".ChatMessageSent", handler).listen(".ChatDeleted", onDeleted);
+      echo.private(name).listen(".ChatMessageSent", handler).listen(".ChatDeleted", onDeleted).listen(".ChatTransferred", onTransferred);
     }
     return () => {
       for (const name of names) {
         echo.leave(name);
       }
     };
-  }, [pusher?.key, pusher?.cluster, inboxChannels, onRealtimeEvent, dropChats]);
+  }, [pusher?.key, pusher?.cluster, inboxChannels, onRealtimeEvent, dropChats, upsertRow]);
 
   const query = (extra: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -473,12 +483,8 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const isNative = selected?.provider === "native";
   const canAssign = user.can.assign_leads && Boolean(selected?.lead);
   const canDelete = user.can.delete_leads && Boolean(selected?.lead);
-  // Admins + chat agents (role fallback if an older session payload lacks convert_chats)
-  const canConvertByRole =
-    user.role === "SUPER_ADMIN" || user.role === "ADMIN" || user.role === "CHAT_AGENT" || user.role === "DEVELOPER";
-  const canConvert =
-    (user.can.convert_chats ?? canConvertByRole) &&
-    (selected?.can_convert ?? Boolean(selected && !selected.lead));
+  const canConvert = user.can.convert_chats && (selected?.can_convert ?? Boolean(selected && !selected.lead));
+  const canTransfer = user.can.oversee_chats && Boolean(selected?.brand_id);
   const location = selected ? [selected.city, selected.country].filter(Boolean).join(", ") : "";
 
   return (
@@ -632,6 +638,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                         </div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
                           <span className="truncate">{c.website?.name ?? c.property_name ?? "Unlinked"}</span>
+                          {canTransfer && c.assigned_to ? <span className="shrink-0 truncate text-slate-400">· {c.assigned_to}</span> : null}
                           {c.provider === "tawk" ? <span className="rounded bg-slate-200/80 px-1.5 py-0.5 font-medium">Tawk</span> : null}
                           {c.is_live ? (
                             <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">Live</span>
@@ -708,6 +715,12 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                       <button type="button" className="btn-primary btn-sm" onClick={() => void convertToLead()} disabled={converting}>
                         <UserPlus className="h-3.5 w-3.5" />
                         {converting ? "Converting…" : "Convert to lead"}
+                      </button>
+                    ) : null}
+                    {canTransfer ? (
+                      <button type="button" className="btn-secondary btn-sm" onClick={() => setTransferOpen(true)}>
+                        <Send className="h-3.5 w-3.5" />
+                        Send to Front Sales
                       </button>
                     ) : null}
                     {isNative && selected.status === "open" ? (
@@ -792,6 +805,16 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                         : "No lead yet — waiting for the visitor to send a message."}
                   </div>
                 )}
+
+                {selected.transfer ? (
+                  <div className="border-b border-indigo-100 bg-indigo-50/70 px-5 py-2.5 text-xs text-indigo-950">
+                    <p>
+                      {selected.transfer.to_id === user.id ? "Sent to you" : `Sent to ${selected.transfer.to ?? "a rep"}`}
+                      {selected.transfer.by ? ` by ${selected.transfer.by}` : ""} · {formatRelative(selected.transfer.at, now)}
+                    </p>
+                    {selected.transfer.note ? <p className="mt-1 whitespace-pre-wrap font-medium">“{selected.transfer.note}”</p> : null}
+                  </div>
+                ) : null}
 
                 {selected.provider === "tawk" ? (
                   <div className="border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs text-slate-600">
@@ -917,6 +940,23 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
             ) : (
               <EmptyState title="Select a conversation" description="Pick a chat from the inbox to view the transcript and reply." />
             )}
+            {selected && canTransfer ? (
+              <TransferDialog
+                open={transferOpen}
+                onClose={() => setTransferOpen(false)}
+                onDone={() => {
+                  syncLive();
+                  void fetchChats();
+                }}
+                conversationId={selected.id}
+                visitorName={selected.display_name}
+                reps={frontSales}
+                currentRepId={selected.transfer?.to_id ?? null}
+                hasLead={Boolean(selected.lead)}
+                canConvert={canConvert}
+                canAddReps={user.can.manage_users}
+              />
+            ) : null}
           </div>
         </div>
       )}

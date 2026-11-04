@@ -90,6 +90,11 @@ PUSHER_APP_SECRET=
 PUSHER_APP_CLUSTER=mt1
 VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
 VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+
+# Client invoice payments (see "Take card payments" below)
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+PAYMENT_INSTRUCTIONS="Bank transfer: Your Bank\nIBAN: XX00 0000 0000"
 ```
 
 Keep `SESSION_DRIVER=database`, `CACHE_STORE=database` and `QUEUE_CONNECTION=sync`. No Redis, queue worker or
@@ -130,6 +135,22 @@ abandoned chats then stay open and the log tables keep growing.
 1. Open `https://leads.yourcompany.com` and sign in with the account from step 5.
 2. **Brands & routing** → create a brand. **Websites** → add a website and press **Send test lead**.
 3. Follow [INTEGRATIONS.md](INTEGRATIONS.md) to put the embed snippet on your websites and connect Tawk.to.
+
+## Take card payments (optional)
+
+Every invoice has a link clients open to view and pay it. Without Stripe keys the page still works and shows
+`PAYMENT_INSTRUCTIONS` instead of a card button. Check first that Stripe supports your business's country.
+
+1. In the [Stripe dashboard](https://dashboard.stripe.com/apikeys), copy the **Secret key** into `STRIPE_SECRET_KEY`.
+2. *Developers → Webhooks → Add endpoint*, with the URL `https://leads.yourcompany.com/api/webhooks/stripe`.
+3. Select the events `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
+4. Copy the endpoint's **Signing secret** (`whsec_…`) into `STRIPE_WEBHOOK_SECRET`.
+5. Run `php artisan optimize`, because the app reads `.env` from its cached config.
+6. Use test keys first: raise a small invoice, open its link and pay with the card `4242 4242 4242 4242`. The invoice
+   should turn **Paid** and the payment should appear on the **Finance** page. Then switch to the live keys, and add
+   the webhook again in live mode, since it has its own signing secret.
+
+The webhook records a payment even if the client closes the browser before returning to the invoice page.
 
 ## Updating (CI/CD)
 

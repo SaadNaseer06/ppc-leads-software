@@ -6,6 +6,9 @@ return [
     // APP_TIMEZONE in frontend/.env so charts and dates agree.
     'report_timezone' => env('REPORT_TIMEZONE', 'UTC'),
 
+    // Shown on the client's invoice page, e.g. bank details. Use \n for new lines.
+    'payment_instructions' => str_replace('\n', "\n", (string) env('PAYMENT_INSTRUCTIONS', '')),
+
     // Fallback Tawk.to webhook secret; per-website secrets take priority.
     'tawk_webhook_secret' => env('TAWK_WEBHOOK_SECRET'),
 

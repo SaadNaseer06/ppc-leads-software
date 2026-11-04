@@ -10,11 +10,14 @@ use App\Models\Brand;
 use App\Models\Conversation;
 use App\Models\Invoice;
 use App\Models\Lead;
+use App\Models\User;
 use App\Models\Website;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /** Brands & routing: brands, their websites/team counts and round-robin auto-assign */
 class BrandController extends Controller
@@ -32,14 +35,56 @@ class BrandController extends Controller
         $reps = DB::table('brand_user')->join('users', 'users.id', '=', 'brand_user.user_id')
             ->whereIn('brand_user.brand_id', $ids)->where('users.active', true)->where('users.role', Role::FrontSales->value)
             ->groupBy('brand_user.brand_id')->selectRaw('brand_user.brand_id, COUNT(*) AS n')->pluck('n', 'brand_id');
+        $managers = DB::table('brand_user')->join('users', 'users.id', '=', 'brand_user.user_id')
+            ->whereIn('brand_user.brand_id', $ids)->where('users.active', true)->where('users.role', Role::BrandManager->value)
+            ->orderBy('users.name')->get(['brand_user.brand_id', 'users.id', 'users.name'])->groupBy('brand_id');
 
         return response()->json([
             'brands' => $brands->map(fn (Brand $b) => [
                 ...$b->only(['id', 'name', 'slug', 'auto_assign_enabled', 'websites_count', 'users_count']),
                 'waiting' => (int) ($waiting[$b->id] ?? 0),
                 'front_sales_reps' => (int) ($reps[$b->id] ?? 0),
+                'managers' => ($managers[$b->id] ?? collect())->map(fn ($m) => ['id' => $m->id, 'name' => $m->name])->values(),
             ]),
+            'manager_options' => $user->canAssignBrandManagers()
+                ? $this->managerOptions($user)->map->only(['id', 'name'])->values()
+                : [],
         ]);
+    }
+
+    /** Give a brand its manager, or none. A brand has one: whoever held it loses the brand. */
+    public function setManager(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canAssignBrandManagers(), 403);
+        $brand = Brand::query()->visibleTo($user)->findOrFail($id);
+        $data = $request->validate(['user_id' => ['present', 'nullable', 'integer']]);
+
+        $manager = null;
+        if ($data['user_id'] !== null) {
+            $manager = $this->managerOptions($user)->firstWhere('id', $data['user_id'])
+                ?? throw ValidationException::withMessages(['user_id' => 'Choose an active Brand Manager from your team.']);
+        }
+
+        DB::transaction(function () use ($brand, $manager) {
+            $current = $brand->users()->where('users.role', Role::BrandManager->value)->pluck('users.id');
+            $brand->users()->detach($current->reject(fn ($id) => (int) $id === $manager?->id)->all());
+            if ($manager) {
+                $brand->users()->syncWithoutDetaching([$manager->id]);
+            }
+        });
+        ActivityLog::record($user->id, 'brand.set_manager', 'Brand', $brand->id, ['manager_id' => $manager?->id]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Brand Managers this user may appoint: everyone for a Super Admin, their own people for an Admin */
+    private function managerOptions(User $user): Collection
+    {
+        return User::where('role', Role::BrandManager->value)->where('active', true)
+            ->when($user->role === Role::Admin, fn ($q) => $q->where(fn ($w) => $w->where('admin_id', $user->id)
+                ->orWhereHas('brands', fn ($b) => $b->whereIn('brands.id', $user->brandIds()))))
+            ->orderBy('name')->get(['id', 'name']);
     }
 
     public function store(Request $request): JsonResponse

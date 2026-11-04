@@ -9,7 +9,8 @@ import { ChannelBadge, SourceBadge, StatusBadge } from "@/components/ui/badges";
 import { CopyButton } from "@/components/ui/copy-button";
 import { LeadActions, EditContactButton } from "./partials/lead-actions";
 import { NoteForm } from "./partials/note-form";
-import { CreateInvoiceForm } from "./partials/create-invoice-form";
+import { CreateInvoiceButton } from "../Invoices/partials/create-invoice-dialog";
+import { InvoiceStatusBadge } from "../Invoices/partials/invoice-actions";
 
 export default function LeadShow({ lead, activities, conversations, invoices, assignees }: LeadDetail) {
   const user = usePage<SharedProps>().props.auth.user!;
@@ -198,18 +199,24 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
                       <li key={inv.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
                         <div>
                           <p className="font-medium text-slate-800">{inv.number}</p>
-                          <p className="text-xs text-slate-500">
-                            {formatMoney(inv.amount, inv.currency)} · <span className="capitalize">{inv.status}</span>
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+                            {formatMoney(inv.amount, inv.currency)}
+                            <InvoiceStatusBadge status={inv.status} overdue={inv.is_overdue} />
                           </p>
                         </div>
-                        <a className="btn-secondary btn-sm" href={`/api/invoices/${inv.id}/pdf`}>
-                          PDF
-                        </a>
+                        <div className="flex items-center gap-1">
+                          {inv.pay_url && inv.status !== "cancelled" ? <CopyButton value={inv.pay_url} label="Link" /> : null}
+                          <a className="btn-secondary btn-sm" href={`/api/invoices/${inv.id}/pdf`}>
+                            PDF
+                          </a>
+                        </div>
                       </li>
                     ))}
                   </ul>
                 )}
-                {user.can.create_invoice ? <CreateInvoiceForm leadId={lead.id} /> : null}
+                {user.can.create_invoice ? (
+                  <CreateInvoiceButton compact lead={{ id: lead.id, name: lead.name, email: lead.email, company: lead.company }} />
+                ) : null}
               </div>
             </section>
           ) : null}
@@ -274,6 +281,7 @@ const REASONS: Record<string, string> = {
   converted_handoff: "conversion hand-off",
   user_deactivated: "user deactivated",
   bulk: "bulk action",
+  chat_transfer: "chat sent to them",
 };
 
 function ActivityLine({ activity }: { activity: LeadActivity }) {
@@ -333,6 +341,19 @@ function ActivityLine({ activity }: { activity: LeadActivity }) {
       );
     case "updated":
       return <p className="text-sm text-slate-600">{strong(who)} updated the contact details</p>;
+    case "invoice":
+      return (
+        <p className="text-sm text-slate-600">
+          {strong(who)} created invoice {strong(String(d.number))} for {formatMoney(Number(d.amount), String(d.currency))}
+        </p>
+      );
+    case "payment":
+      return (
+        <p className="text-sm text-slate-600">
+          {strong(formatMoney(Number(d.amount), String(d.currency)))} received on {String(d.number)}
+          {d.paid_in_full ? " — paid in full" : ""}
+        </p>
+      );
     default:
       return <p className="text-sm text-slate-600">{activity.type}</p>;
   }

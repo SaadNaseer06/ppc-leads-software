@@ -33,7 +33,7 @@ class LeadListTest extends TestCase
             $rows[] = [
                 'brand_id' => $brand->id, 'name' => $name, 'email' => $email, 'source' => 'form', 'status' => 'new',
                 'channel' => 'ppc', 'search_text' => LeadText::searchText($name, $email, null),
-                'created_at' => $created, 'updated_at' => $created, 'last_activity_at' => $created, ...$attrs,
+                'created_at' => $created, 'updated_at' => $created, 'last_activity_at' => $created, 'promoted_at' => $created, ...$attrs,
             ];
         }
         Lead::insert($rows);
@@ -86,7 +86,7 @@ class LeadListTest extends TestCase
         $this->seedLeads(20, [$brand]);
         Lead::create([
             'brand_id' => $brand->id, 'name' => 'Olivia Rossi', 'email' => 'olivia.rossi@example.org', 'phone' => '+1 (555) 777-8888',
-            'source' => 'form', 'search_text' => LeadText::searchText('Olivia Rossi', 'olivia.rossi@example.org', '+1 (555) 777-8888'),
+            'source' => 'form', 'promoted_at' => now(), 'search_text' => LeadText::searchText('Olivia Rossi', 'olivia.rossi@example.org', '+1 (555) 777-8888'),
         ]);
         $this->actingAs($this->user(Role::SuperAdmin));
 

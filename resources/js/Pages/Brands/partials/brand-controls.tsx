@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm";
 import { Modal } from "@/components/ui/modal";
 import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
+import type { Ref } from "@/lib/api-types";
 
 export function DeleteBrandButton({ brandId, brandName }: { brandId: number; brandName: string }) {
   const toast = useToast();
@@ -76,6 +77,44 @@ export function DeleteBrandButton({ brandId, brandName }: { brandId: number; bra
       <Trash2 className={`h-3.5 w-3.5 ${busy ? "animate-pulse" : ""}`} />
       {busy ? "Deleting…" : "Delete"}
     </button>
+  );
+}
+
+/** Appoints the brand's manager. Setting a new one replaces whoever held the brand. */
+export function BrandManagerSelect({ brandId, current, options }: { brandId: number; current: Ref[]; options: Ref[] }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  // Someone outside this admin's team can already be managing the brand
+  const choices = [...current.filter((m) => !options.some((o) => o.id === m.id)), ...options];
+
+  async function change(userId: number | null) {
+    setBusy(true);
+    const res = await apiRequest(`/api/admin/brands/${brandId}/manager`, { method: "PATCH", body: { user_id: userId } });
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    const name = choices.find((c) => c.id === userId)?.name;
+    toast.success(name ? `${name} now manages this brand` : "Brand has no manager");
+    router.reload();
+  }
+
+  return (
+    <select
+      className="input w-auto min-w-[170px] py-1.5"
+      value={current[0]?.id ?? ""}
+      disabled={busy}
+      onChange={(e) => void change(e.target.value ? Number(e.target.value) : null)}
+      aria-label="Brand manager"
+    >
+      <option value="">No manager</option>
+      {choices.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.name}
+        </option>
+      ))}
+    </select>
   );
 }
 

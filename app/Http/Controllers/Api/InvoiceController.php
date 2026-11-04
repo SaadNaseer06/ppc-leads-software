@@ -8,7 +8,8 @@ use App\Models\Brand;
 use App\Models\Invoice;
 use App\Models\Lead;
 use App\Models\PaymentTransaction;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\InvoicePayments;
+use App\Services\InvoicePdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -22,6 +23,8 @@ class InvoiceController extends Controller
     private const LIMIT = 200;
 
     private const MAX_ZIP = 500;
+
+    public function __construct(private InvoicePdf $pdf, private InvoicePayments $payments) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -41,30 +44,66 @@ class InvoiceController extends Controller
     {
         $user = $request->user();
         abort_unless($user->canCreateInvoice(), 403);
+        $today = now(config('ppc.report_timezone'))->toDateString();
         $data = $request->validate([
             'lead_id' => ['required', 'integer'],
-            'amount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
+            'items' => ['required_without:amount', 'array', 'min:1', 'max:50'],
+            'items.*.label' => ['required', 'string', 'max:191'],
+            'items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:999999'],
+            'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:99999999'],
+            // A single amount with no items is still accepted from API clients
+            'amount' => ['required_without:items', 'numeric', 'gt:0', 'max:9999999999'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'due_date' => ['nullable', 'date_format:Y-m-d', "after_or_equal:{$today}"],
             'currency' => ['sometimes', 'string', 'size:3'],
             'description' => ['nullable', 'string', 'max:5000'],
-            'line_items' => ['sometimes', 'array'],
-            'line_items.*.label' => ['required', 'string'],
-            'line_items.*.amount' => ['required', 'numeric'],
-        ], ['amount.gt' => 'Amount must be greater than zero']);
+        ], [
+            'items.required_without' => 'Add at least one item',
+            'items.*.label.required' => 'Every item needs a description',
+            'items.*.quantity.gt' => 'Quantity must be greater than zero',
+            'amount.gt' => 'Amount must be greater than zero',
+            'due_date.after_or_equal' => "The due date can't be in the past",
+        ]);
 
         $lead = Lead::query()->visibleTo($user)->findOrFail($data['lead_id']);
+        $items = $data['items'] ?? [['label' => ($data['description'] ?? null) ?: 'Services', 'quantity' => 1, 'unit_price' => $data['amount']]];
+        $priced = Invoice::priced($items, (float) ($data['discount'] ?? 0), (float) ($data['tax_rate'] ?? 0));
+        if ($priced['discount'] > $priced['subtotal']) {
+            return response()->json(['error' => "The discount can't be more than the subtotal"], 422);
+        }
+        if ($priced['amount'] <= 0) {
+            return response()->json(['error' => 'The invoice total must be greater than zero'], 422);
+        }
+        if ($priced['amount'] > 9999999999) {
+            return response()->json(['error' => 'The invoice total is too large'], 422);
+        }
+
         $invoice = Invoice::createWithNumber([
+            ...$priced,
             'lead_id' => $lead->id,
             'brand_id' => $lead->brand_id,
             'created_by_id' => $user->id,
-            'amount' => $data['amount'],
             'currency' => strtoupper($data['currency'] ?? 'USD'),
             'description' => $data['description'] ?? null,
-            'line_items' => $data['line_items'] ?? null,
+            'due_date' => $data['due_date'] ?? null,
             'status' => 'sent',
+        ]);
+        $lead->activities()->create([
+            'actor_id' => $user->id,
+            'type' => 'invoice',
+            'data' => ['number' => $invoice->number, 'amount' => (float) $invoice->amount, 'currency' => $invoice->currency],
         ]);
         ActivityLog::record($user->id, 'invoice.create', 'Invoice', $invoice->id, ['number' => $invoice->number, 'amount' => $invoice->amount]);
 
-        return response()->json(['id' => $invoice->id, 'number' => $invoice->number], 201);
+        return response()->json([
+            'id' => $invoice->id,
+            'number' => $invoice->number,
+            'amount' => $invoice->amount,
+            'currency' => $invoice->currency,
+            'pay_url' => $invoice->pay_url,
+            'lead' => $lead->only(['name', 'email']),
+        ], 201);
     }
 
     /** Mark an invoice paid, cancelled, or back to sent */
@@ -74,11 +113,20 @@ class InvoiceController extends Controller
         abort_unless($user->canManageInvoices(), 403);
         $invoice = Invoice::query()->visibleTo($user)->findOrFail($id);
         $data = $request->validate(['status' => ['required', Rule::in(Invoice::STATUSES)]]);
+        // An invoice that payments already cover can only be paid, not reopened as unpaid
+        $status = $data['status'] === 'sent' && $invoice->balanceDue() <= 0 ? 'paid' : $data['status'];
 
-        if ($invoice->status !== $data['status']) {
+        if ($invoice->status !== $status) {
             $from = $invoice->status;
-            $invoice->update(['status' => $data['status']]);
-            ActivityLog::record($user->id, 'invoice.status', 'Invoice', $invoice->id, ['from' => $from, 'to' => $data['status']]);
+            DB::transaction(function () use ($invoice, $status) {
+                $balance = $invoice->balanceDue();
+                // "Paid" means the money arrived: the balance joins the payments, so totals stay true
+                if ($status === 'paid' && $balance > 0) {
+                    $this->payments->add($invoice, $balance, 'other', null, 'Marked as paid');
+                }
+                $invoice->update(['status' => $status]);
+            });
+            ActivityLog::record($user->id, 'invoice.status', 'Invoice', $invoice->id, ['from' => $from, 'to' => $status]);
         }
 
         return response()->json(['ok' => true, 'status' => $invoice->status]);
@@ -110,17 +158,7 @@ class InvoiceController extends Controller
                     : 'This invoice is already paid in full.'];
             }
 
-            $invoice->payments()->create([
-                'amount' => $data['amount'],
-                'method' => $data['method'],
-                'external_ref' => $data['external_ref'] ?? null,
-                'notes' => $data['notes'] ?? null,
-                'recorded_at' => now(),
-            ]);
-            $paid = round($paid + (float) $data['amount'], 2);
-            if ($paid >= (float) $invoice->amount && $invoice->status !== 'paid') {
-                $invoice->update(['status' => 'paid']);
-            }
+            $paid = $this->payments->add($invoice, (float) $data['amount'], $data['method'], $data['external_ref'] ?? null, $data['notes'] ?? null);
 
             return ['invoice' => $invoice, 'paid' => $paid];
         });
@@ -139,7 +177,7 @@ class InvoiceController extends Controller
         $invoice = Invoice::query()->visibleTo($request->user())->with(['brand', 'lead', 'createdBy'])
             ->withSum('payments as paid_total', 'amount')->findOrFail($id);
 
-        return $this->render($invoice)->download("{$invoice->number}.pdf");
+        return $this->pdf->make($invoice)->download("{$invoice->number}.pdf");
     }
 
     /** Finance page: recent payments and invoices */
@@ -152,7 +190,7 @@ class InvoiceController extends Controller
                 ->latest('recorded_at')->limit(self::LIMIT)->get(),
             'invoices' => Invoice::with(['brand:id,name', 'lead:id,name'])->withSum('payments as paid_total', 'amount')
                 ->latest()->limit(self::LIMIT)
-                ->get(['id', 'number', 'amount', 'currency', 'status', 'brand_id', 'lead_id', 'created_at']),
+                ->get(['id', 'number', 'amount', 'currency', 'status', 'due_date', 'pay_token', 'brand_id', 'lead_id', 'created_at']),
             'limit' => self::LIMIT,
         ]);
     }
@@ -175,7 +213,7 @@ class InvoiceController extends Controller
         $zip = new \ZipArchive;
         $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
         foreach ($invoices as $invoice) {
-            $zip->addFromString("{$invoice->number}.pdf", $this->render($invoice)->output());
+            $zip->addFromString("{$invoice->number}.pdf", $this->pdf->make($invoice)->output());
         }
         $zip->close();
         ActivityLog::record($request->user()->id, 'invoice.bulk_download', 'Invoice', null, ['count' => $invoices->count()]);
@@ -220,14 +258,5 @@ class InvoiceController extends Controller
             'paid_amount' => (float) ($paid[$b->id] ?? 0),
             'outstanding_amount' => max(0, (float) ($due[$b->id] ?? 0)),
         ])]);
-    }
-
-    private function render(Invoice $invoice): \Barryvdh\DomPDF\PDF
-    {
-        $items = $invoice->line_items ?: [['label' => $invoice->description ?: 'Services', 'amount' => (float) $invoice->amount]];
-
-        // Subsetting embeds only the glyphs used: Unicode-safe names, ~30 KB instead of ~900 KB
-        return Pdf::setOption('enable_font_subsetting', true)
-            ->loadView('pdf.invoice', ['invoice' => $invoice, 'items' => $items]);
     }
 }

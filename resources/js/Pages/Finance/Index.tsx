@@ -2,7 +2,8 @@ import { Head, Link, usePage } from "@inertiajs/react";
 import { FileText, Wallet } from "lucide-react";
 import type { FinanceData } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatCalendarDay, formatDate, formatMoney } from "@/lib/format";
+import { CopyButton } from "@/components/ui/copy-button";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { BulkDownloadButton } from "./partials/bulk-download-button";
 import { InvoiceActions, InvoiceStatusBadge, PAYMENT_METHODS, balanceDue } from "../Invoices/partials/invoice-actions";
@@ -55,12 +56,16 @@ export default function FinanceIndex({ transactions, invoices, limit: LIMIT }: F
                       {inv.status === "cancelled" ? "—" : formatMoney(inv.status === "paid" ? 0 : balanceDue(inv), inv.currency)}
                     </td>
                     <td>
-                      <InvoiceStatusBadge status={inv.status} partlyPaid={Number(inv.paid_total ?? 0) > 0} />
+                      <InvoiceStatusBadge status={inv.status} partlyPaid={Number(inv.paid_total ?? 0) > 0} overdue={inv.is_overdue} />
                     </td>
-                    <td className="whitespace-nowrap">{formatDate(inv.created_at)}</td>
+                    <td className="whitespace-nowrap">
+                      {formatDate(inv.created_at)}
+                      {inv.due_date ? <span className="block text-xs text-slate-500">Due {formatCalendarDay(inv.due_date)}</span> : null}
+                    </td>
                     <td className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         {user.can.manage_invoices ? <InvoiceActions invoice={inv} /> : null}
+                        {inv.pay_url && inv.status !== "cancelled" ? <CopyButton value={inv.pay_url} label="Copy link" /> : null}
                         <a className="btn-ghost btn-sm" href={`/api/invoices/${inv.id}/pdf`} title="Download PDF">
                           PDF
                         </a>

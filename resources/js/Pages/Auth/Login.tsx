@@ -6,6 +6,7 @@ import { BrandMark } from "@/components/brand-mark";
 const DEMO_ACCOUNTS = [
   ["superadmin@ppc.lead", "Super Admin"],
   ["admin@ppc.lead", "Admin"],
+  ["manager@ppc.lead", "Brand Manager"],
   ["front1@ppc.lead", "Front Sales"],
   ["upsales@ppc.lead", "Up Sales"],
   ["chat@ppc.lead", "Chat Agent"],

@@ -75,3 +75,15 @@ export function formatDayLabel(day: string) {
     new Date(`${day}T00:00:00Z`)
   );
 }
+
+/** "Oct 2026" for an API month such as "2026-10" */
+export function formatMonthLabel(month: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+}
+
+/** "Nov 30, 2026" for a calendar date such as a due date: it has no time, so no timezone applies */
+export function formatCalendarDay(day: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(
+    new Date(`${day}T00:00:00Z`)
+  );
+}

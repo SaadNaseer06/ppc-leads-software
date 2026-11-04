@@ -52,6 +52,23 @@ class TeamDirectory
         ])->all();
     }
 
+    /**
+     * Active Front Sales reps of a brand, least loaded first: who a chat can be handed to.
+     *
+     * @return list<array{id: int, name: string, open_leads: int}>
+     */
+    public function frontSales(int $brandId): array
+    {
+        $reps = User::where('active', true)->where('role', Role::FrontSales->value)
+            ->whereHas('brands', fn ($q) => $q->where('brands.id', $brandId))
+            ->orderBy('name')->get(['id', 'name']);
+        $open = Lead::query()->inInbox()->whereIn('assignee_id', $reps->pluck('id'))->whereIn('status', LeadStatus::open())
+            ->groupBy('assignee_id')->selectRaw('assignee_id, COUNT(*) AS n')->pluck('n', 'assignee_id');
+
+        return $reps->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'open_leads' => (int) ($open[$u->id] ?? 0)])
+            ->sortBy('open_leads')->values()->all();
+    }
+
     /** Session payload: who the user is and what the dashboard may show them */
     public function profile(User $user): array
     {
@@ -78,7 +95,8 @@ class TeamDirectory
                 'view_reports' => $user->canViewReports(),
                 'manage_websites' => $user->canManageWebsites(),
                 'manage_users' => $user->canManageUsers(),
-                'view_team' => $user->canManageUsers() || $user->role === Role::Developer,
+                'view_team' => $user->canViewTeam(),
+                'assign_brand_managers' => $user->canAssignBrandManagers(),
                 'manage_brands' => $user->canManageBrands(),
                 'export_leads' => $user->canAssignLeads(),
             ],

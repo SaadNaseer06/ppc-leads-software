@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\IntakeController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\NativeChatController;
+use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\TawkWebhookController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebsiteController;
@@ -19,6 +21,8 @@ use Illuminate\Support\Facades\Route;
 Route::post('/intake/{key}', [IntakeController::class, 'store'])->middleware('throttle:intake');
 // Tawk.to webhooks (HMAC-signed)
 Route::post('/webhooks/tawk', TawkWebhookController::class);
+// Stripe confirms card payments here (signed)
+Route::post('/webhooks/stripe', StripeWebhookController::class);
 // Dashboard sign-in: email + password -> API token
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
@@ -54,6 +58,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/chats/{id}/messages', [ChatController::class, 'storeMessage'])->whereNumber('id');
     Route::post('/chats/{id}/end', [ChatController::class, 'end'])->whereNumber('id');
     Route::post('/chats/{id}/convert', [ChatController::class, 'convert'])->whereNumber('id');
+    Route::post('/chats/{id}/transfer', [ChatController::class, 'transfer'])->whereNumber('id');
     Route::post('/chats/delete', [ChatController::class, 'destroy']);
 
     Route::get('/websites', [WebsiteController::class, 'index']);
@@ -70,6 +75,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/admin/brands', [BrandController::class, 'store']);
     Route::patch('/admin/brands', [BrandController::class, 'update']);
     Route::delete('/admin/brands/{id}', [BrandController::class, 'destroy'])->whereNumber('id');
+    Route::patch('/admin/brands/{id}/manager', [BrandController::class, 'setManager'])->whereNumber('id');
 
     Route::get('/invoices', [InvoiceController::class, 'index']);
     Route::post('/invoices', [InvoiceController::class, 'store']);
@@ -79,4 +85,6 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/finance', [InvoiceController::class, 'finance']);
     Route::post('/finance/bulk-pdf', [InvoiceController::class, 'bulkPdf']);
     Route::get('/reports/sales-by-brand', [InvoiceController::class, 'salesByBrand']);
+    Route::get('/reports/sales', [ReportController::class, 'sales']);
+    Route::get('/reports/sales/export', [ReportController::class, 'export']);
 });

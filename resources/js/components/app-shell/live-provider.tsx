@@ -3,6 +3,7 @@ import { router } from "@inertiajs/react";
 import type { CurrentUser, LiveCounts } from "@/types";
 import { ArrowUp } from "lucide-react";
 import { getEcho } from "@/lib/echo";
+import { useToast } from "@/components/ui/toast";
 
 // The server pings open dashboards through Pusher whenever lead counts change, so polling is
 // only a fallback: every 10s until a ping has proven realtime works (30s once nothing has
@@ -71,7 +72,7 @@ export function useLiveReload(only: string[], gapMs: number, enabled = true, onR
 function leadChannels(user: CurrentUser): string[] {
   const own = `leads.user.${user.id}`;
   if (user.can.manage_brands) return ["leads.all", own];
-  if (user.role === "ADMIN" || user.role === "FINANCE") return [...user.brand_ids.map((id) => `leads.brand.${id}`), own];
+  if (user.role === "ADMIN" || user.role === "BRAND_MANAGER" || user.role === "FINANCE") return [...user.brand_ids.map((id) => `leads.brand.${id}`), own];
   return [own];
 }
 
@@ -102,6 +103,9 @@ export function LiveProvider({
   const proven = useRef(false);
   const seen = useRef<string | null>(null);
   const pingTimer = useRef<number | null>(null);
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const screens = useRef(new Set<() => void>());
   const [watched, setWatched] = useState(false);
 
@@ -193,6 +197,12 @@ export function LiveProvider({
     };
     const names = channelKey.split(",");
     for (const name of names) echo.private(name).listen(".LeadsChanged", onPing);
+    // A chat handed to this rep: tell them wherever they are
+    const onChatSent = (payload: { from?: string; conversation?: { display_name?: string } }) => {
+      toastRef.current.success(`${payload.from ?? "A colleague"} sent you a chat with ${payload.conversation?.display_name ?? "a visitor"}`);
+      void poll();
+    };
+    echo.private(`leads.user.${user.id}`).listen(".ChatTransferred", onChatSent);
     return () => {
       connection.unbind("state_change", onState);
       for (const name of names) echo.leave(name);
@@ -200,7 +210,7 @@ export function LiveProvider({
       pingTimer.current = null;
       proven.current = false;
     };
-  }, [realtime?.key, realtime?.cluster, channelKey, poll]);
+  }, [realtime?.key, realtime?.cluster, channelKey, poll, user.id]);
 
   useEffect(() => {
     if (baseTitle.current === null) baseTitle.current = document.title.replace(/^\(\d+\+?\)\s*/, "");

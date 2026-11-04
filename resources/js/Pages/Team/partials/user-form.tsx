@@ -144,7 +144,7 @@ function UserForm({
             ))}
           </div>
         )}
-        <p className="hint">Users only see leads, chats and websites for the brands ticked here.</p>
+        <p className="hint">Users only see leads, chats and websites for the brands ticked here. A Brand Manager runs the brands ticked.</p>
       </fieldset>
       {editing && !isSelf ? (
         <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">

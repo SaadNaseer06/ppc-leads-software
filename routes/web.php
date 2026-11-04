@@ -2,7 +2,16 @@
 
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\PayController;
 use Illuminate\Support\Facades\Route;
+
+// What the client sees: an invoice and how to pay it. The token in the link is the credential.
+Route::middleware('throttle:pay')->prefix('pay/{token}')->whereAlphaNumeric('token')->group(function () {
+    Route::get('/', [PayController::class, 'show']);
+    Route::post('/checkout', [PayController::class, 'checkout']);
+    Route::get('/return', [PayController::class, 'returned']);
+    Route::get('/pdf', [PayController::class, 'pdf']);
+});
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [SessionController::class, 'create'])->name('login');

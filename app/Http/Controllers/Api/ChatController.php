@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
+use App\Models\User;
 use App\Services\NativeChatService;
 use App\Services\TeamDirectory;
 use App\Support\Realtime;
@@ -26,7 +27,8 @@ class ChatController extends Controller
         abort_unless($user->canViewChats(), 403);
 
         $kind = in_array($request->query('kind'), ['chat', 'ticket'], true) ? $request->query('kind') : null;
-        $query = Conversation::query()->visibleTo($user)->started()->with(['website:id,name', 'lead:id,name,assignee_id']);
+        $query = Conversation::query()->visibleTo($user)->started()
+            ->with(['website:id,name', 'lead:id,name,assignee_id', 'assignedAgent:id,name']);
         if ($kind) {
             $query->where('kind', $kind);
         }
@@ -43,7 +45,9 @@ class ChatController extends Controller
 
         $selectedId = $request->query('id') ?? $rows->first()?->id;
         $selected = $selectedId
-            ? Conversation::query()->visibleTo($user)->with(['website:id,name,domain', 'lead.assignee:id,name'])->find($selectedId)
+            ? Conversation::query()->visibleTo($user)
+                ->with(['website:id,name,domain', 'lead.assignee:id,name', 'assignedAgent:id,name', 'transferredBy:id,name'])
+                ->find($selectedId)
             : null;
         // The newest 500 messages, oldest first
         $selected?->setRelation('messages', $selected->messages()
@@ -70,8 +74,17 @@ class ChatController extends Controller
                 ] : null,
                 // Admins and Chat Agents can promote an unconverted chat onto the Leads page
                 'can_convert' => $user->canConvertChatsToLeads() && ! $selected->lead?->isInInbox(),
+                'transfer' => $selected->transferred_at ? [
+                    'by' => $selected->transferredBy?->name,
+                    'to_id' => $selected->assigned_agent_id,
+                    'to' => $selected->assignedAgent?->name,
+                    'at' => $selected->transferred_at,
+                    'note' => $selected->transfer_note,
+                ] : null,
             ] : null,
             'assignees' => $assignees,
+            // Who this chat can be handed to
+            'front_sales' => ($user->canOverseeBrandChats() && $selected?->brand_id) ? $this->team->frontSales($selected->brand_id) : [],
             'open_count' => $openCount,
             // Tawk.to chats from a property no website is linked to yet
             'unlinked' => $user->hasGlobalAccess()
@@ -131,6 +144,24 @@ class ChatController extends Controller
                 'promoted' => true,
             ],
         ]);
+    }
+
+    /** Hand a chat to a Front Sales rep (whoever staffs the brand's inbox) */
+    public function transfer(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canOverseeBrandChats(), 403);
+        $conversation = Conversation::query()->visibleTo($user)->with('lead')->findOrFail($id);
+        $data = $request->validate([
+            'user_id' => ['required', 'integer'],
+            'note' => ['nullable', 'string', 'max:500'],
+            'convert' => ['sometimes', 'boolean'],
+        ], ['user_id.required' => 'Choose a Front Sales rep']);
+
+        $to = User::findOrFail($data['user_id']);
+        $conversation = $this->native->transfer($conversation, $to, $user, $data['note'] ?? null, (bool) ($data['convert'] ?? false));
+
+        return response()->json(['ok' => true, 'conversation' => $this->row($conversation)]);
     }
 
     /** Admins and Super Admins remove chats (one or a selection); linked leads stay */

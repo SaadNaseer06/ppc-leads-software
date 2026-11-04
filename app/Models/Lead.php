@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\Role;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -71,8 +70,8 @@ class Lead extends Model
             return $query;
         }
         $query->whereIn('leads.brand_id', $user->brandIds());
-        // Brand-wide: Admin, Finance, Chat Agent (agents open lead cards from chats)
-        if (! in_array($user->role, [Role::Admin, Role::Finance, Role::ChatAgent], true)) {
+        // Chat Agents see the brand too: they open lead cards from chats
+        if (! $user->role->seesWholeBrand()) {
             $query->where('leads.assignee_id', $user->id);
         }
 
@@ -94,7 +93,7 @@ class Lead extends Model
             return ['1 = 0', []];
         }
         $sql = 'brand_id IN ('.implode(',', array_fill(0, count($brands), '?')).')';
-        if (! in_array($user->role, [Role::Admin, Role::Finance, Role::ChatAgent], true)) {
+        if (! $user->role->seesWholeBrand()) {
             return ["{$sql} AND assignee_id = ?", [...$brands, $user->id]];
         }
 

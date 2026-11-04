@@ -16,6 +16,7 @@ use App\Models\User;
 // use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+
 // use Illuminate\Support\Str;
 
 /** Demo accounts for development and staging. Every account's password is "password123". */
@@ -85,13 +86,14 @@ class DatabaseSeeder extends Seeder
 
         // Users only (no brand attachments until brands are seeded again)
         $user('superadmin@ppc.lead', 'Alex Morgan', Role::SuperAdmin);
-        $user('admin@ppc.lead', 'Jordan Lee', Role::Admin /*, [$apex->id, $lumen->id] */);
-        $user('front1@ppc.lead', 'Sam Rivera', Role::FrontSales /*, [$apex->id], $admin->id */);
-        $user('front2@ppc.lead', 'Taylor Brooks', Role::FrontSales /*, [$apex->id], $admin->id */);
-        $user('front3@ppc.lead', 'Riley Chen', Role::FrontSales /*, [$lumen->id], $admin->id */);
-        $user('upsales@ppc.lead', 'Casey Patel', Role::UpSales /*, [$apex->id, $lumen->id] */);
-        $user('chat@ppc.lead', 'Jamie Fox', Role::ChatAgent /*, [$apex->id, $lumen->id] */);
-        $user('finance@ppc.lead', 'Morgan Ellis', Role::Finance /*, [$apex->id, $lumen->id] */);
+        $user('admin@ppc.lead', 'Jordan Lee', Role::Admin /* , [$apex->id, $lumen->id] */);
+        $user('manager@ppc.lead', 'Robin Hayes', Role::BrandManager);
+        $user('front1@ppc.lead', 'Sam Rivera', Role::FrontSales /* , [$apex->id], $admin->id */);
+        $user('front2@ppc.lead', 'Taylor Brooks', Role::FrontSales /* , [$apex->id], $admin->id */);
+        $user('front3@ppc.lead', 'Riley Chen', Role::FrontSales /* , [$lumen->id], $admin->id */);
+        $user('upsales@ppc.lead', 'Casey Patel', Role::UpSales /* , [$apex->id, $lumen->id] */);
+        $user('chat@ppc.lead', 'Jamie Fox', Role::ChatAgent /* , [$apex->id, $lumen->id] */);
+        $user('finance@ppc.lead', 'Morgan Ellis', Role::Finance /* , [$apex->id, $lumen->id] */);
         $user('dev@ppc.lead', 'Dev Account', Role::Developer);
         // $repsFor = [$apex->id => [$front1->id, $front2->id], $lumen->id => [$front3->id]];
 

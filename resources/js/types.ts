@@ -17,6 +17,7 @@ export type Permission =
   | "manage_websites"
   | "manage_users"
   | "view_team"
+  | "assign_brand_managers"
   | "manage_brands"
   | "export_leads";
 

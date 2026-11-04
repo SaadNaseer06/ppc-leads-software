@@ -22,27 +22,36 @@ class UserController extends Controller
     public function index(Request $request): JsonResponse
     {
         $me = $request->user();
-        abort_unless($me->canManageUsers() || $me->role === Role::Developer, 403);
+        abort_unless($me->canViewTeam(), 403);
 
         $users = User::with('brands:id,name')
             ->when($me->role === Role::Admin, fn ($q) => $q->where(fn ($w) => $w->whereKey($me->id)->orWhere('admin_id', $me->id)))
+            ->when($me->role === Role::BrandManager, fn ($q) => $q->whereHas('brands', fn ($b) => $b->whereIn('brands.id', $me->brandIds())))
             ->orderByDesc('active')->orderBy('name')->get();
         $ids = $users->pluck('id');
 
-        $open = Lead::whereIn('assignee_id', $ids)->whereIn('status', LeadStatus::open())
+        // Reps can work several brands. A manager sees their work in the managed brands, nothing else.
+        $scope = $me->role === Role::BrandManager ? $me->brandIds() : null;
+        $inScope = fn ($q) => $q->inInbox()->when($scope !== null, fn ($s) => $s->whereIn('brand_id', $scope));
+
+        $open = Lead::whereIn('assignee_id', $ids)->whereIn('status', LeadStatus::open())->tap($inScope)
             ->groupBy('assignee_id')->selectRaw('assignee_id, COUNT(*) AS n')->pluck('n', 'assignee_id');
         // By created_at, not assigned_at: answered from the (assignee_id, created_at, ...) index alone
-        $recent = Lead::whereIn('assignee_id', $ids)->where('created_at', '>=', now()->subDays(30))
+        $recent = Lead::whereIn('assignee_id', $ids)->where('created_at', '>=', now()->subDays(30))->tap($inScope)
             ->groupBy('assignee_id')->selectRaw('assignee_id, COUNT(*) AS n')->pluck('n', 'assignee_id');
 
-        $grantable = $me->role === Role::Admin ? Role::adminGrantable() : Role::cases();
+        $grantable = match (true) {
+            $me->role === Role::Admin => Role::adminGrantable(),
+            $me->canManageUsers() => Role::cases(),
+            default => [],
+        };
 
         return response()->json([
             'users' => $users->map(fn (User $u) => [
                 ...$u->only(['id', 'name', 'email', 'active', 'admin_id', 'last_login_at']),
                 'role' => $u->role->value,
                 'role_label' => $u->role->label(),
-                'brands' => $u->brands->map->only(['id', 'name'])->values(),
+                'brands' => $u->brands->when($scope !== null, fn ($b) => $b->whereIn('id', $scope))->map->only(['id', 'name'])->values(),
                 'open_leads' => (int) ($open[$u->id] ?? 0),
                 'leads_30d' => (int) ($recent[$u->id] ?? 0),
                 'editable' => $me->canManageUsers() && ($me->role !== Role::Admin || $u->admin_id === $me->id || $u->id === $me->id),

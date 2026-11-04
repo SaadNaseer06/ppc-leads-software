@@ -23,7 +23,10 @@ const STATUS_STYLES: Record<string, string> = {
   draft: "bg-slate-50 text-slate-600 border-slate-200",
 };
 
-export function InvoiceStatusBadge({ status, partlyPaid }: { status: string; partlyPaid?: boolean }) {
+export function InvoiceStatusBadge({ status, partlyPaid, overdue }: { status: string; partlyPaid?: boolean; overdue?: boolean }) {
+  if (overdue) {
+    return <span className="badge badge-dot border-red-100 bg-red-50 text-red-700">Overdue</span>;
+  }
   if (status === "sent" && partlyPaid) {
     return <span className="badge badge-dot border-amber-100 bg-amber-50 text-amber-800">Part paid</span>;
   }
@@ -88,13 +91,13 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceForActions }) {
           type="button"
           className="btn-ghost btn-sm"
           disabled={busy}
-          title="Mark as paid without recording a payment"
+          title="Mark the full balance as received"
           onClick={async () => {
             const ok = await confirm({
               title: `Mark ${invoice.number} as paid?`,
               description:
                 balance > 0
-                  ? `No payment is recorded for the remaining ${formatMoney(balance, invoice.currency)}. Record a payment instead if you want it in the transactions list.`
+                  ? `The remaining ${formatMoney(balance, invoice.currency)} is recorded as received. Use “Record payment” instead to add the method and reference.`
                   : "The invoice will show as paid.",
               confirmLabel: "Mark as paid",
               tone: "default",

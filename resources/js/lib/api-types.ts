@@ -102,7 +102,17 @@ export type LeadDetail = {
   };
   activities: LeadActivity[];
   conversations: { id: number; kind: string; status: string; subject: string | null; started_at: string; messages: ChatMessage[] }[];
-  invoices: { id: number; number: string; amount: string; currency: string; status: string; created_at: string }[];
+  invoices: {
+    id: number;
+    number: string;
+    amount: string;
+    currency: string;
+    status: string;
+    due_date: string | null;
+    is_overdue: boolean;
+    pay_url: string | null;
+    created_at: string;
+  }[];
   assignees: Assignee[];
 };
 
@@ -145,9 +155,13 @@ export type ConversationRow = {
   last_message_at: string;
   message_count: number;
   property_name: string | null;
+  /** Who holds the chat: the rep it was sent to, or whoever answered first */
+  assigned_to: string | null;
   website: Ref | null;
   can_reply: boolean;
 };
+
+export type FrontSalesRep = { id: number; name: string; open_leads: number };
 
 export type ChatsData = {
   conversations: ConversationRow[];
@@ -173,9 +187,11 @@ export type ChatsData = {
           promoted?: boolean;
         } | null;
         can_convert?: boolean;
+        transfer: { by: string | null; to_id: number | null; to: string | null; at: string; note: string | null } | null;
       })
     | null;
   assignees: Assignee[];
+  front_sales: FrontSalesRep[];
   open_count: number;
   unlinked: number;
   pusher: { key: string | null; cluster: string } | null;
@@ -254,7 +270,10 @@ export type BrandsData = {
     users_count: number;
     waiting: number;
     front_sales_reps: number;
+    managers: Ref[];
   }[];
+  /** Brand Managers this user may appoint */
+  manager_options: Ref[];
 };
 
 export type InvoiceRow = {
@@ -265,6 +284,10 @@ export type InvoiceRow = {
   status: string;
   /** Sum of recorded payments */
   paid_total: string | null;
+  due_date: string | null;
+  is_overdue: boolean;
+  /** The page the client opens to view and pay */
+  pay_url: string | null;
   created_at: string;
   brand: Ref;
   lead: Ref;
@@ -288,6 +311,9 @@ export type FinanceData = {
     currency: string;
     status: string;
     paid_total: string | null;
+    due_date: string | null;
+    is_overdue: boolean;
+    pay_url: string | null;
     created_at: string;
     brand: Ref;
     lead: Ref;
@@ -304,4 +330,51 @@ export type BrandReport = {
   total_amount: number;
   paid_amount: number;
   outstanding_amount: number;
+};
+
+export type SalesFilters = {
+  from: string;
+  to: string;
+  brand: number | null;
+  website: number | null;
+  rep: number | null;
+  channel: string | null;
+  status: string | null;
+};
+
+export type SalesBreakdownRow = {
+  id: number | string;
+  name: string;
+  invoices: number;
+  invoiced: number;
+  collected: number;
+  outstanding: number;
+};
+
+export type SalesReportData = {
+  filters: SalesFilters;
+  options: {
+    brands: Ref[];
+    websites: (Ref & { brand_id: number })[];
+    reps: Ref[];
+    channels: string[];
+    statuses: string[];
+  };
+  totals: {
+    invoices: number;
+    paid_invoices: number;
+    invoiced: number;
+    collected: number;
+    outstanding: number;
+    overdue: number;
+    average: number;
+  };
+  previous: { invoiced: number; collected: number };
+  leads: { received: number; converted: number };
+  granularity: "day" | "month";
+  series: { bucket: string; invoiced: number; collected: number; outstanding: number }[];
+  by_brand: SalesBreakdownRow[];
+  by_rep: SalesBreakdownRow[];
+  by_channel: SalesBreakdownRow[];
+  by_campaign: SalesBreakdownRow[];
 };

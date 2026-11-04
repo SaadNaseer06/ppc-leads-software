@@ -107,7 +107,7 @@ class InvoicePaymentsTest extends TestCase
         $this->postJson("/api/invoices/{$invoice}/payments", ['amount' => 40, 'method' => 'cash'])->assertCreated();
 
         $this->deleteJson("/api/admin/brands/{$doomed->id}")->assertUnprocessable()
-            ->assertJsonPath('requires_force', true)->assertJsonPath('leads', 2);
+            ->assertJsonPath('requires_force', true)->assertJsonPath('leads', 1);
         $this->deleteJson("/api/admin/brands/{$doomed->id}?force=1")->assertOk();
 
         $this->assertNull($doomed->fresh());
@@ -116,9 +116,9 @@ class InvoicePaymentsTest extends TestCase
         $this->assertSame(0, Conversation::whereNull('brand_id')->count());
         $this->assertSame(0, PaymentTransaction::count());
         $this->assertSame([$kept->id], $rep->fresh()->brandIds());
-        // The other brand is untouched (its chat lead included)
+        // The other brand is untouched
         $this->assertNotNull($keptLead->fresh());
-        $this->assertSame(2, Lead::where('brand_id', $kept->id)->count());
+        $this->assertSame(1, Lead::where('brand_id', $kept->id)->count());
         $this->getJson('/api/chats')->assertOk()->assertJsonCount(1, 'conversations')->assertJsonPath('unlinked', 0);
     }
 

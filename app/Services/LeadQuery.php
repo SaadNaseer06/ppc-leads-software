@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\Role;
 use App\Models\Lead;
 use App\Models\User;
 use App\Support\LeadText;
@@ -90,7 +89,7 @@ class LeadQuery
      */
     public function brandSplit(User $user, array $f): ?array
     {
-        if (! in_array($user->role, [Role::Admin, Role::Finance, Role::ChatAgent], true)) {
+        if (! $user->role->seesWholeBrand()) {
             return null;
         }
         // These filters already narrow to a single ordered index range (or use FULLTEXT)

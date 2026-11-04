@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebsiteController;
 use Illuminate\Http\Request;
@@ -93,6 +94,6 @@ class PageController extends Controller
 
     public function reports(): Response
     {
-        return Inertia::render('Reports', $this->payload(InvoiceController::class, 'salesByBrand'));
+        return Inertia::render('Reports', $this->payload(ReportController::class, 'sales'));
     }
 }

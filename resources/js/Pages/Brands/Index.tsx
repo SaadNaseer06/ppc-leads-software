@@ -4,9 +4,9 @@ import type { BrandsData } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
 import { formatNumber } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
-import { AutoAssignToggle, CreateBrandButton, DeleteBrandButton } from "./partials/brand-controls";
+import { AutoAssignToggle, BrandManagerSelect, CreateBrandButton, DeleteBrandButton } from "./partials/brand-controls";
 
-export default function BrandsIndex({ brands }: BrandsData) {
+export default function BrandsIndex({ brands, manager_options: managerOptions }: BrandsData) {
   const user = usePage<SharedProps>().props.auth.user!;
 
   return (
@@ -14,9 +14,19 @@ export default function BrandsIndex({ brands }: BrandsData) {
       <Head title="Brands & routing" />
       <PageHeader
         title="Brands & routing"
-        description="Brands group websites and the team that works their leads. Turn on auto-assign to rotate new leads across Front Sales reps automatically."
+        description="Brands group websites and the team that works their leads. Give each brand a manager, and turn on auto-assign to rotate new leads across Front Sales reps."
         actions={user.can.manage_brands ? <CreateBrandButton /> : null}
       />
+
+      {user.can.assign_brand_managers && managerOptions.length === 0 && brands.length > 0 ? (
+        <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          No Brand Managers yet.{" "}
+          <Link href="/team" className="font-medium text-teal-700 hover:underline">
+            Add one on the Team page
+          </Link>{" "}
+          with the Brand Manager role, then choose them here.
+        </p>
+      ) : null}
 
       <div className="card overflow-hidden">
         {brands.length === 0 ? (
@@ -27,6 +37,7 @@ export default function BrandsIndex({ brands }: BrandsData) {
               <thead>
                 <tr>
                   <th>Brand</th>
+                  <th>Manager</th>
                   <th className="text-right">Websites</th>
                   <th className="text-right">Team</th>
                   <th className="text-right">Waiting to be assigned</th>
@@ -43,6 +54,15 @@ export default function BrandsIndex({ brands }: BrandsData) {
                       <td>
                         <p className="font-medium text-slate-900">{b.name}</p>
                         <p className="font-mono text-xs text-slate-500">{b.slug}</p>
+                      </td>
+                      <td>
+                        {user.can.assign_brand_managers ? (
+                          <BrandManagerSelect brandId={b.id} current={b.managers} options={managerOptions} />
+                        ) : (
+                          <span className={b.managers.length ? "text-slate-700" : "text-slate-400"}>
+                            {b.managers.map((m) => m.name).join(", ") || "No manager"}
+                          </span>
+                        )}
                       </td>
                       <td className="text-right tabular-nums">
                         <Link href="/websites" className="text-teal-700 hover:underline">

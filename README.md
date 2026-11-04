@@ -21,7 +21,8 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
   every form and stores ad attribution (gclid, UTM, landing page) for 90 days, or through a webhook URL
   (Elementor, WPForms, Gravity Forms, Zapier, custom code).
 - **Native live chat.** Drop-in `ppc-chat.js` widget; agents reply from **Chats**. Pusher (cloud) delivers
-  messages in realtime on shared hosting; polling is the fallback. First visitor message creates a lead.
+  messages in realtime on shared hosting; polling is the fallback. Inbox staff can convert a chat into a lead or send
+  it to a Front Sales rep with a private note, and the rep is told at once on whatever screen they're on.
 - **Tawk.to (legacy).** Optional signed webhooks keep old chats as read-only history.
 - **Assignment.** Assign one lead or hundreds at once. Each brand can rotate new leads round-robin across its
   Front Sales reps (safe under concurrent traffic). The assign menu shows each rep's open-lead workload.
@@ -31,9 +32,14 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
   per website and per rep.
 - **Lead timeline.** Creation, repeat submissions, assignments, status changes, notes and chats. Repeat submissions
   from the same email/phone within 30 days merge into the existing lead instead of duplicating it.
-- **Roles.** Super Admin, Admin, Front Sales, Up Sales, Finance, Developer. Each user is scoped to their brands, and
-  sales reps only see their own leads. Invoices with payment tracking (part payments, paid, cancelled), PDF downloads,
-  finance and per-brand sales reports are included.
+- **Roles.** Super Admin, Admin, Brand Manager, Chat Agent, Front Sales, Up Sales, Finance, Developer. Each user is
+  scoped to their brands, and sales reps only see their own leads. An Admin or Super Admin appoints one Brand Manager
+  per brand, who runs its leads, chats, websites and invoices and sees its team (read-only).
+- **Invoices.** Line items, discount, tax and a due date. Every invoice has a private link where the client can see
+  it, download the PDF and pay by card through Stripe Checkout, or read your payment instructions. Part payments,
+  paid and cancelled invoices are tracked on the Finance page and the lead's timeline.
+- **Sales analytics.** Invoiced, collected and outstanding totals, a trend chart, and breakdowns by brand, rep, channel
+  and campaign. Filter by date, brand, website, rep, channel and status, and export the result as CSV.
 
 ## Run it locally
 
@@ -57,7 +63,9 @@ Every demo account uses the password `password123`:
 |---|---|---|
 | superadmin@ppc.lead | Super Admin | Everything |
 | admin@ppc.lead | Admin | The brands given to them on the Team page; assigns leads, manages the team and websites |
-| front1@ppc.lead | Front Sales | Only leads assigned to them |
+| manager@ppc.lead | Brand Manager | The brand they're appointed to on Brands & routing; runs its leads, chats, websites and invoices |
+| chat@ppc.lead | Chat Agent | Every chat in their brands; replies, converts chats to leads and sends them to Front Sales |
+| front1@ppc.lead | Front Sales | Only leads and chats assigned to them |
 | upsales@ppc.lead | Up Sales | Converted leads handed to them |
 | finance@ppc.lead | Finance | Invoices, payments, reports |
 | dev@ppc.lead | Developer | Everything, for testing (use staging data) |
@@ -107,6 +115,8 @@ with a token from `POST /api/auth/login` (`Authorization: Bearer …`). Errors a
 |---|---|
 | `POST /api/intake/{key}` | Lead from a website: JSON, form-encoded, multipart or `text/plain` JSON. Rate-limited 20 / 10 min per key and IP. |
 | `POST /api/webhooks/tawk` | Tawk.to webhook (HMAC-SHA1 signed, retries de-duplicated by `X-Hook-Event-Id`). |
+| `POST /api/webhooks/stripe` | Stripe payment events (signature checked, each checkout recorded once). |
+| `GET /pay/{token}` · `POST /pay/{token}/checkout` · `GET /pay/{token}/pdf` | The client's invoice page, card checkout and PDF. Rate-limited 60 / min per IP. |
 | `POST /api/auth/login` | `{email, password}` → `{token, user}` |
 
 | Signed in | |
@@ -114,9 +124,11 @@ with a token from `POST /api/auth/login` (`Authorization: Bearer …`). Errors a
 | `GET /api/me` · `GET /api/live` · `GET /api/lookups` · `GET /api/dashboard?range=7\|30\|90` | Profile and permissions, live badge counts, picker options, dashboard |
 | `GET /api/leads` · `POST /api/leads` · `GET/PATCH /api/leads/{id}` · `POST /api/leads/{id}/notes` | List (filters `q status source channel website brand assignee from to`, paging `cursor dir size`), create, detail, update, note |
 | `POST /api/leads/bulk` · `GET /api/leads/export` | Bulk assign/status (≤ 500); streaming CSV |
-| `GET /api/chats` · `GET/POST /api/websites` · `GET/PATCH /api/websites/{id}` | Tawk.to inbox; websites, snippets, delivery log |
-| `GET/POST /api/admin/users` · `PATCH /api/admin/users/{id}` · `GET/POST/PATCH /api/admin/brands` | Team; brands and auto-assign |
-| `GET/POST /api/invoices` · `PATCH /api/invoices/{id}` · `POST /api/invoices/{id}/payments` · `GET /api/invoices/{id}/pdf` · `GET /api/finance` · `POST /api/finance/bulk-pdf` · `GET /api/reports/sales-by-brand` | Invoices (status: sent / paid / cancelled), payments, PDFs, finance, reports |
+| `GET /api/chats` · `POST /api/chats/{id}/messages` · `POST /api/chats/{id}/end` · `POST /api/chats/{id}/convert` · `POST /api/chats/{id}/transfer` · `POST /api/chats/delete` | Inbox, reply, end, convert to a lead, send to a Front Sales rep (`{to_id, note, convert}`), delete |
+| `GET/POST /api/websites` · `GET/PATCH /api/websites/{id}` | Websites, snippets, delivery log |
+| `GET/POST /api/admin/users` · `PATCH /api/admin/users/{id}` · `GET/POST/PATCH /api/admin/brands` · `PATCH /api/admin/brands/{id}/manager` | Team; brands and auto-assign; appoint a brand's manager |
+| `GET/POST /api/invoices` · `PATCH /api/invoices/{id}` · `POST /api/invoices/{id}/payments` · `GET /api/invoices/{id}/pdf` · `GET /api/finance` · `POST /api/finance/bulk-pdf` | Invoices (`items[]`, `discount`, `tax_rate`, `due_date`; status: sent / paid / cancelled), payments, PDFs, finance |
+| `GET /api/reports/sales` · `GET /api/reports/sales/export` | Sales analytics and CSV (filters `from to brand website rep channel status`) |
 
 ## Built for large lead volumes
 
@@ -124,7 +136,8 @@ Lead counts only grow, so no page view scans the whole table:
 
 - **Covering indexes.** Three `leads` indexes start with how a view is scoped (everything / a brand / an assignee),
   then `(created_at, id)`, then every column the lists and dashboard filter on. Lists read rows in index order;
-  counts and dashboard aggregates are answered from the index without touching row data.
+  counts and dashboard aggregates are answered from the index without touching row data. A new column that lead
+  queries filter on has to join these indexes: leaving `promoted_at` out took the list from 0.3s to 26s at 300k leads.
 - **Keyset pagination.** Older/newer pages use a `(created_at, id)` cursor, so page 5,000 costs the same as page 1.
   For admins with several brands, each brand is read in index order and the pages merged.
 - **Capped counts.** Lists say "10,000+" rather than counting millions of rows on every request.

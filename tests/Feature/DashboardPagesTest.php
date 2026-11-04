@@ -50,7 +50,7 @@ class DashboardPagesTest extends TestCase
             '/brands' => ['Brands/Index', 'brands'],
             '/invoices' => ['Invoices', 'invoices'],
             '/finance' => ['Finance/Index', 'transactions'],
-            '/reports' => ['Reports', 'reports'],
+            '/reports' => ['Reports', 'totals'],
         ];
         foreach ($screens as $url => [$component, $prop]) {
             $this->get($url)->assertOk()->assertInertia(fn (Assert $p) => $p->component($component)

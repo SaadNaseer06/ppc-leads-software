@@ -22,15 +22,15 @@ class ChatMessageSent implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         $conversation = $this->message->conversation;
-        $assigneeId = $conversation?->lead?->assignee_id;
+        // The rep whose lead this chat is, and the rep it was handed to
+        $reps = array_unique(array_filter([$conversation?->lead?->assignee_id, $conversation?->assigned_agent_id]));
 
         return array_values(array_filter([
             new PrivateChannel('chat.'.$this->message->conversation_id),
             $conversation?->brand_id ? new PrivateChannel('chats.'.$conversation->brand_id) : null,
             // Super Admin / Developer inboxes (they belong to no brand)
             new PrivateChannel('chats.all'),
-            // The sales rep whose lead this chat is
-            $assigneeId ? new PrivateChannel('chats.user.'.$assigneeId) : null,
+            ...array_map(fn ($id) => new PrivateChannel('chats.user.'.$id), $reps),
         ]));
     }
 

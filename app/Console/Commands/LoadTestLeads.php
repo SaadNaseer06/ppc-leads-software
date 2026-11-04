@@ -86,6 +86,7 @@ class LoadTestLeads extends Command
                     'submission_count' => 1,
                     'search_text' => LeadText::searchText($name, $email, $phone),
                     'last_activity_at' => $created,
+                    'promoted_at' => $created,
                     'created_at' => $created,
                     'updated_at' => $created,
                 ];

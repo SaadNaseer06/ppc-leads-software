@@ -34,6 +34,8 @@ class AppServiceProvider extends ServiceProvider
             ->by($request->route('key').'|'.$request->ip())
             ->response(fn () => response()->json(['ok' => false, 'error' => 'Too many submissions. Please try again later.'], 429)));
 
+        RateLimiter::for('pay', fn (Request $request) => Limit::perMinute(60)->by($request->ip()));
+
         RateLimiter::for('chat', fn (Request $request) => Limit::perMinutes(1, 60)
             ->by(($request->input('visitor_token') ?: $request->input('public_key') ?: 'anon').'|'.$request->ip())
             ->response(fn () => response()->json(['error' => 'Too many chat requests. Please try again shortly.'], 429)));

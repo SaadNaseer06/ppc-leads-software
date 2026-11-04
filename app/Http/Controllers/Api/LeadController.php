@@ -121,7 +121,7 @@ class LeadController extends Controller
                 'messages' => $c->messages->reverse()->values()->map->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
             ]),
             'invoices' => $user->canViewInvoices()
-                ? $lead->invoices()->latest()->limit(20)->get(['id', 'number', 'amount', 'currency', 'status', 'created_at'])
+                ? $lead->invoices()->latest()->limit(20)->get(['id', 'number', 'amount', 'currency', 'status', 'due_date', 'pay_token', 'created_at'])
                 : [],
             'assignees' => $team->assignable($user, $lead->brand_id),
         ]);

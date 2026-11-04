@@ -36,7 +36,7 @@ Broadcast::channel('leads.all', function ($user) {
 });
 
 Broadcast::channel('leads.brand.{brandId}', function ($user, string $brandId) {
-    return ctype_digit($brandId) && in_array($user->role, [Role::Admin, Role::Finance], true) && $user->canAccessBrand((int) $brandId);
+    return ctype_digit($brandId) && in_array($user->role, [Role::Admin, Role::BrandManager, Role::Finance], true) && $user->canAccessBrand((int) $brandId);
 });
 
 Broadcast::channel('leads.user.{userId}', function ($user, string $userId) {

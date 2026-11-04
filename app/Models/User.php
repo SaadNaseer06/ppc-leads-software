@@ -84,14 +84,32 @@ class User extends Authenticatable
         return $this->hasGlobalAccess();
     }
 
+    /** Admins and Brand Managers run their brands; everything they do is scoped to those brands */
+    public function managesBrands(): bool
+    {
+        return $this->hasGlobalAccess() || $this->role === Role::Admin || $this->role === Role::BrandManager;
+    }
+
     public function canManageWebsites(): bool
     {
-        return $this->hasGlobalAccess() || $this->role === Role::Admin;
+        return $this->managesBrands();
     }
 
     public function canAssignLeads(): bool
     {
-        return $this->hasGlobalAccess() || $this->role === Role::Admin;
+        return $this->managesBrands();
+    }
+
+    /** Give a brand its Brand Manager (Super Admin, and Admins on their own brands) */
+    public function canAssignBrandManagers(): bool
+    {
+        return $this->canManageUsers();
+    }
+
+    /** See who works the brands (Brand Managers read-only: they can't add or edit users) */
+    public function canViewTeam(): bool
+    {
+        return $this->canManageUsers() || $this->role === Role::Developer || $this->role === Role::BrandManager;
     }
 
     /** Permanently remove a lead (Super Admin / Admin only) */
@@ -118,7 +136,7 @@ class User extends Authenticatable
     /** Promote a chat onto the Leads page (Admins and Chat Agents) */
     public function canConvertChatsToLeads(): bool
     {
-        return $this->hasGlobalAccess() || in_array($this->role, [Role::Admin, Role::ChatAgent], true);
+        return $this->managesBrands() || $this->role === Role::ChatAgent;
     }
 
     public function canCreateLeads(): bool
@@ -138,7 +156,7 @@ class User extends Authenticatable
 
     public function canViewReports(): bool
     {
-        return $this->hasGlobalAccess() || in_array($this->role, [Role::Admin, Role::Finance], true);
+        return $this->managesBrands() || $this->role === Role::Finance;
     }
 
     public function canViewFinance(): bool
@@ -148,18 +166,18 @@ class User extends Authenticatable
 
     public function canCreateInvoice(): bool
     {
-        return $this->isSales() || $this->hasGlobalAccess() || $this->role === Role::Admin;
+        return $this->isSales() || $this->managesBrands();
     }
 
     public function canViewInvoices(): bool
     {
-        return $this->canCreateInvoice() || in_array($this->role, [Role::Finance, Role::Admin], true);
+        return $this->canCreateInvoice() || $this->role === Role::Finance;
     }
 
-    /** Record payments and mark invoices paid or cancelled (Admins only on their brands' invoices) */
+    /** Record payments and mark invoices paid or cancelled (Admins and Brand Managers on their brands) */
     public function canManageInvoices(): bool
     {
-        return $this->hasGlobalAccess() || in_array($this->role, [Role::Finance, Role::Admin], true);
+        return $this->managesBrands() || $this->role === Role::Finance;
     }
 
     public function canAccessBrand(int $brandId): bool

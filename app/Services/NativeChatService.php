@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Enums\LeadSource;
+use App\Enums\Role;
 use App\Events\ChatDeleted;
 use App\Events\ChatMessageSent;
+use App\Events\ChatTransferred;
 use App\Models\ActivityLog;
 use App\Models\Brand;
 use App\Models\Conversation;
@@ -309,6 +311,57 @@ class NativeChatService
         return $lead;
     }
 
+    /**
+     * Hands a chat to a Front Sales rep: it lands in their inbox with its history, they reply
+     * from there, and a linked lead moves with it. The note stays internal.
+     */
+    public function transfer(Conversation $conversation, User $to, User $actor, ?string $note, bool $convert): Conversation
+    {
+        abort_unless(
+            $to->active && $to->role === Role::FrontSales && in_array((int) $conversation->brand_id, $to->brandIds(), true),
+            422,
+            'Choose an active Front Sales rep who works this brand.'
+        );
+        abort_if($conversation->transferred_at && $conversation->assigned_agent_id === $to->id, 422, "This chat is already with {$to->name}.");
+
+        if ($convert && ! $conversation->lead?->isInInbox()) {
+            $this->convertToLead($conversation, $actor);
+            $conversation->refresh();
+        }
+
+        $conversation->update([
+            'assigned_agent_id' => $to->id,
+            'transferred_by_id' => $actor->id,
+            'transferred_at' => now(),
+            'transfer_note' => LeadText::clean($note, 500),
+        ]);
+        if ($conversation->lead_id) {
+            app(LeadAssignment::class)->assign([$conversation->lead_id], $to->id, $actor->id, 'chat_transfer');
+        }
+
+        // The visitor sees who they are talking to now (only a live native chat has a visitor)
+        if ($conversation->provider === 'native' && $conversation->status === 'open') {
+            $at = CarbonImmutable::now();
+            $system = $conversation->messages()->create(['sender_type' => 'system', 'body' => "{$to->name} has joined the chat", 'sent_at' => $at]);
+            $conversation->update(['message_count' => $conversation->messages()->count()]);
+            $this->broadcast($system);
+        }
+        ActivityLog::record($actor->id, 'chat.transfer', 'Conversation', $conversation->id, ['to_user_id' => $to->id]);
+
+        $conversation->load(['website:id,name', 'lead:id,name,assignee_id', 'assignedAgent:id,name']);
+        defer(function () use ($to, $actor, $conversation) {
+            try {
+                $row = $conversation->toInboxRow();
+                $row['last_message'] = mb_substr((string) $row['last_message'], 0, 200);
+                event(new ChatTransferred($to->id, $row, $actor->name));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
+        return $conversation;
+    }
+
     private function promoteLead(?Lead $lead, Conversation $conversation): void
     {
         if (! $lead || $lead->isInInbox()) {
@@ -365,7 +418,7 @@ class NativeChatService
     {
         defer(function () use ($message) {
             try {
-                event(new ChatMessageSent($message->fresh(['conversation.website', 'conversation.lead'])));
+                event(new ChatMessageSent($message->fresh(['conversation.website', 'conversation.lead', 'conversation.assignedAgent'])));
             } catch (\Throwable $e) {
                 report($e);
             }

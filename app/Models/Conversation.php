@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\Role;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +19,7 @@ class Conversation extends Model
         return [
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
+            'transferred_at' => 'datetime',
             'last_message_at' => 'datetime',
             'message_count' => 'integer',
         ];
@@ -40,6 +40,11 @@ class Conversation extends Model
         return $this->belongsTo(User::class, 'assigned_agent_id');
     }
 
+    public function transferredBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'transferred_by_id');
+    }
+
     public function messages(): HasMany
     {
         return $this->hasMany(ConversationMessage::class);
@@ -50,12 +55,15 @@ class Conversation extends Model
         if ($user->hasGlobalAccess()) {
             return $query;
         }
-        // Admins and Chat Agents staff every conversation in their brands
-        if ($user->role === Role::Admin || $user->role === Role::ChatAgent) {
+        // Admins, Brand Managers and Chat Agents staff every conversation in their brands
+        if ($user->canOverseeBrandChats()) {
             return $query->whereIn('brand_id', $user->brandIds());
         }
+        // Reps see chats handed to them, and chats of the leads they own
         if ($user->isSales()) {
-            return $query->whereHas('lead', fn (Builder $q) => $q->where('assignee_id', $user->id));
+            return $query->where(fn (Builder $w) => $w
+                ->where(fn (Builder $q) => $q->where('assigned_agent_id', $user->id)->whereIn('brand_id', $user->brandIds()))
+                ->orWhereHas('lead', fn (Builder $q) => $q->where('assignee_id', $user->id)));
         }
 
         return $query->whereRaw('1 = 0');
@@ -89,6 +97,7 @@ class Conversation extends Model
             'display_name' => $this->displayName(),
             'visitor_email' => $this->visitor_email,
             'is_live' => $this->isLive(),
+            'assigned_to' => $this->assignedAgent?->name,
             'website' => $this->website?->only(['id', 'name']),
             'can_reply' => $this->provider === 'native' && $this->status === 'open',
         ];
