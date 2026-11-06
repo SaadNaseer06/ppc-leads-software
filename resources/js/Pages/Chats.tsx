@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Head, Link, router, usePage } from "@inertiajs/react";
 import {
   ArrowLeft,
+  CircleCheck,
   CircleDot,
   ExternalLink,
   Globe2,
@@ -19,6 +20,7 @@ import type { SharedProps } from "@/types";
 import { formatDateTime, formatRelative, formatTime } from "@/lib/format";
 import { PageHeader, EmptyState } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/badges";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Avatar } from "@/components/ui/avatar";
 import { useConfirm } from "@/components/ui/confirm";
 import { apiHeaders, apiRequest, useToast } from "@/components/ui/toast";
@@ -556,7 +558,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
           />
         </div>
       ) : (
-        <div className="card grid overflow-hidden lg:h-[calc(100vh-250px)] lg:min-h-[560px] lg:grid-cols-[360px_1fr]">
+        <div className="card grid grid-cols-[minmax(0,1fr)] overflow-hidden lg:h-[calc(100vh-250px)] lg:min-h-[560px] lg:grid-cols-[360px_minmax(0,1fr)]">
           <div className={`flex min-h-0 flex-col border-slate-200 bg-slate-50/40 lg:border-r ${params.id ? "hidden lg:flex" : ""}`}>
             <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
               {canDeleteChats ? (
@@ -666,7 +668,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
             {selected ? (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
-                  <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex min-w-[220px] flex-1 items-start gap-3">
                     <Link href={query({ before: params.before })} className="btn-ghost p-1.5 lg:hidden" aria-label="Back">
                       <ArrowLeft className="h-4 w-4" />
                     </Link>
@@ -687,8 +689,8 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                       </div>
                       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                         {selected.visitor_email ? (
-                          <span className="inline-flex items-center gap-1">
-                            <Mail className="h-3 w-3" />
+                          <span className="inline-flex min-w-0 items-center gap-1 break-all">
+                            <Mail className="h-3 w-3 shrink-0" />
                             {selected.visitor_email}
                           </span>
                         ) : (
@@ -710,8 +712,8 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                       <p className="mt-1 text-[11px] text-slate-400">Started {formatDateTime(selected.started_at)}</p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canConvert ? (
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    {canConvert && selected.lead ? (
                       <button type="button" className="btn-primary btn-sm" onClick={() => void convertToLead()} disabled={converting}>
                         <UserPlus className="h-3.5 w-3.5" />
                         {converting ? "Converting…" : "Convert to lead"}
@@ -723,34 +725,28 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
                         Send to Front Sales
                       </button>
                     ) : null}
-                    {isNative && selected.status === "open" ? (
-                      <button type="button" className="btn-ghost btn-sm" onClick={endChat} disabled={ending}>
-                        {ending ? "Ending…" : "End chat"}
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button type="button" className="btn-ghost btn-sm text-red-600 hover:text-red-700" onClick={deleteLead} disabled={deleting}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {deleting ? "Deleting…" : "Delete lead"}
-                      </button>
-                    ) : null}
-                    {canDeleteChats ? (
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm text-red-600 hover:text-red-700"
-                        onClick={() => void deleteChats([selected.id])}
-                        disabled={removing}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {removing ? "Deleting…" : "Delete chat"}
-                      </button>
-                    ) : null}
                     {selected.lead ? (
                       <Link href={`/leads/${selected.lead.id}`} className="btn-secondary btn-sm">
                         <ExternalLink className="h-3.5 w-3.5" />
                         Open lead
                       </Link>
                     ) : null}
+                    <ActionMenu
+                      label="More actions"
+                      groups={[
+                        isNative && selected.status === "open"
+                          ? [{ label: "End chat", icon: <CircleCheck className="h-3.5 w-3.5" />, onSelect: () => void endChat(), disabled: ending }]
+                          : [],
+                        [
+                          ...(canDelete
+                            ? [{ label: "Delete lead", icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => void deleteLead(), danger: true, disabled: deleting }]
+                            : []),
+                          ...(canDeleteChats
+                            ? [{ label: "Delete chat", icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => void deleteChats([selected.id]), danger: true, disabled: removing }]
+                            : []),
+                        ],
+                      ]}
+                    />
                   </div>
                 </div>
 

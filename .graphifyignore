@@ -1,0 +1,4 @@
+# Compiled assets are committed for cPanel deploys, but are not source
+public/build/
+bootstrap/cache/
+storage/
