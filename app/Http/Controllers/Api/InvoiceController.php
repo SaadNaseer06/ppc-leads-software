@@ -42,7 +42,12 @@ class InvoiceController extends Controller
             'limit' => self::LIMIT,
             // The brands this person can bill under, for invoices with no lead
             'brands' => $user->canCreateInvoice() ? $this->billableBrands($user)->get(['id', 'name', 'merchant_name']) : [],
-            'billing' => $user->canManageInvoices() ? $this->stripe->status() : null,
+            'billing' => $user->canManageInvoices() ? [
+                ...$this->stripe->status(),
+                'can_configure' => $user->canManagePayments(),
+                'brands' => Brand::query()->visibleTo($user)->orderBy('name')->get()
+                    ->map(fn (Brand $b) => $this->stripe->brandStatus($b, $user->canManagePayments()))->values(),
+            ] : null,
         ]);
     }
 
@@ -128,7 +133,7 @@ class InvoiceController extends Controller
             'currency' => $invoice->currency,
             'merchant_name' => $invoice->merchant_name,
             'pay_url' => $invoice->pay_url,
-            'card_payments' => $this->stripe->configured(),
+            'card_payments' => $this->stripe->configured($brand),
             'client' => ['name' => $invoice->client_name, 'email' => $invoice->client_email],
         ], 201);
     }

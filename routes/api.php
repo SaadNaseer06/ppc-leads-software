@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\IntakeController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\NativeChatController;
+use App\Http\Controllers\Api\PaymentSettingsController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\TawkWebhookController;
@@ -25,6 +26,7 @@ Route::post('/intake/{key}', [IntakeController::class, 'store'])->middleware('th
 Route::post('/webhooks/tawk', TawkWebhookController::class);
 // Stripe confirms card payments here (signed)
 Route::post('/webhooks/stripe', StripeWebhookController::class);
+Route::post('/webhooks/stripe/{brand}', StripeWebhookController::class)->whereNumber('brand');
 // Dashboard sign-in: email + password -> API token
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
@@ -88,6 +90,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::patch('/invoices/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
     Route::delete('/invoices/{id}', [InvoiceController::class, 'destroy'])->whereNumber('id');
     Route::post('/billing/reload-settings', [BillingController::class, 'reloadSettings']);
+    Route::patch('/admin/brands/{id}/payments', [PaymentSettingsController::class, 'update'])->whereNumber('id');
+    Route::delete('/admin/brands/{id}/payments', [PaymentSettingsController::class, 'destroy'])->whereNumber('id');
     Route::post('/invoices/{id}/payments', [InvoiceController::class, 'storePayment'])->whereNumber('id');
     Route::get('/invoices/{id}/pdf', [InvoiceController::class, 'pdf'])->whereNumber('id');
     Route::get('/finance', [InvoiceController::class, 'finance']);

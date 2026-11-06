@@ -298,7 +298,7 @@ class InvoiceDirectTest extends TestCase
         $brand = $this->brand();
         $this->actingAs($this->user(Role::Admin, [$brand]));
 
-        $body = $this->getJson('/api/invoices')->assertOk()->assertJsonPath('billing.card_payments', true)->getContent();
+        $body = $this->getJson('/api/invoices')->assertOk()->assertJsonPath('billing.brands.0.card_payments', true)->getContent();
 
         $this->assertStringNotContainsString('supersecret', $body);
         $this->assertStringNotContainsString('whsec_hidden', $body);

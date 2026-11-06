@@ -35,7 +35,8 @@ class PayController extends Controller
             'paid' => $invoice->paidTotal(),
             'balance' => $invoice->balanceDue(),
             'payable' => $this->payable($invoice),
-            'cardPayments' => $this->stripe->configured(),
+            'cardPayments' => $this->stripe->configured($invoice->brand),
+            'stripeKey' => $this->stripe->account($invoice->brand)['publishable'],
             'amountDue' => StripePayments::amountDue($invoice),
             'instructions' => config('ppc.payment_instructions'),
             'outcome' => $request->query('payment'),
@@ -46,7 +47,7 @@ class PayController extends Controller
     public function intent(Request $request, string $token): JsonResponse
     {
         abort_unless($found = $this->invoice($request, $token), 404);
-        if (! $this->stripe->configured()) {
+        if (! $this->stripe->configured($found->brand)) {
             return response()->json(['error' => 'Card payments are unavailable for this invoice.'], 409);
         }
 
@@ -86,7 +87,7 @@ class PayController extends Controller
     {
         abort_unless($invoice = $this->invoice($request, $token), 404);
 
-        $intent = $this->stripe->configured() ? $this->stripe->intent((string) $request->query('payment_intent')) : null;
+        $intent = $this->stripe->configured($invoice->brand) ? $this->stripe->intent((string) $request->query('payment_intent'), $invoice->brand) : null;
         // A payment for another invoice proves nothing about this one
         if (! $intent || (int) ($intent['metadata']['invoice_id'] ?? 0) !== $invoice->id) {
             return redirect("/pay/{$token}");

@@ -268,6 +268,7 @@ export type BrandBranding = {
   pay_domain: string | null;
   logo_url: string | null;
   domain_connected: boolean;
+  card_payments?: boolean;
 };
 
 export type BrandsData = {
@@ -285,7 +286,7 @@ export type BrandsData = {
   }[];
   /** Brand Managers this user may appoint */
   manager_options: Ref[];
-  billing: { card_payments: boolean; dns_target: string };
+  billing: { dns_target: string };
 };
 
 export type InvoiceRow = {
@@ -311,8 +312,26 @@ export type InvoiceRow = {
 
 export type BrandOption = Ref & { merchant_name: string | null };
 
+/** One brand's card payments. Everything after `webhook` only reaches a Super Admin. */
+export type BrandPayments = {
+  id: number;
+  name: string;
+  card_payments: boolean;
+  webhook: boolean;
+  merchant_name?: string | null;
+  /** Its own keys, the server-wide .env keys, or none */
+  source?: "own" | "env" | null;
+  mode?: "test" | "live" | null;
+  account_name?: string | null;
+  publishable_key?: string | null;
+  secret_hint?: string | null;
+  webhook_url?: string;
+};
+
 /** Why card payments are on or off. Names only, never key values. */
 export type BillingStatus = {
+  can_configure: boolean;
+  brands: BrandPayments[];
   card_payments: boolean;
   mode: "test" | "live" | null;
   missing: string[];

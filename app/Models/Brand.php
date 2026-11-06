@@ -15,14 +15,23 @@ class Brand extends Model
     protected $fillable = [
         'name', 'slug', 'auto_assign_enabled', 'round_robin_last_user_id',
         'merchant_name', 'brand_color', 'logo_path', 'billing_email', 'billing_address', 'pay_domain', 'pay_domain_verified_at',
+        'stripe_publishable_key', 'stripe_secret_key', 'stripe_webhook_secret', 'stripe_account_name',
     ];
+
+    /** A brand can end up in a JSON response through a relation: these must never go with it */
+    protected $hidden = ['stripe_secret_key', 'stripe_webhook_secret'];
 
     /** @var array<int, string>|null Connected invoice domains by brand, read once per request */
     private static ?array $payHosts = null;
 
     protected function casts(): array
     {
-        return ['auto_assign_enabled' => 'boolean', 'pay_domain_verified_at' => 'datetime'];
+        return [
+            'auto_assign_enabled' => 'boolean',
+            'pay_domain_verified_at' => 'datetime',
+            'stripe_secret_key' => 'encrypted',
+            'stripe_webhook_secret' => 'encrypted',
+        ];
     }
 
     protected static function booted(): void

@@ -233,7 +233,7 @@ class InvoiceBrandingTest extends TestCase
 
         $this->getJson('/api/admin/brands')->assertOk()
             ->assertJsonPath('brands.0.branding.brand_color', '#123456')
-            ->assertJsonPath('billing.card_payments', false);
+            ->assertJsonPath('brands.0.branding.card_payments', false);
     }
 
     public function test_the_pdf_is_branded(): void

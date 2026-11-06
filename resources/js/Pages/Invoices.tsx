@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Head, Link, usePage } from "@inertiajs/react";
-import { CircleAlert, FileText } from "lucide-react";
+import { CircleAlert, CreditCard, FileText } from "lucide-react";
 import type { BillingStatus, InvoicesData } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
 import { formatCalendarDay, formatDate, formatMoney } from "@/lib/format";
@@ -8,9 +8,11 @@ import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { apiRequest, useToast } from "@/components/ui/toast";
 import { CreateInvoiceButton } from "./Invoices/partials/create-invoice-dialog";
 import { InvoiceActions, InvoiceStatusBadge, balanceDue } from "./Invoices/partials/invoice-actions";
+import { PaymentSettingsDialog } from "./Invoices/partials/payment-settings-dialog";
 
 export default function Invoices({ invoices, limit: LIMIT, brands, billing }: InvoicesData) {
   const user = usePage<SharedProps>().props.auth.user!;
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const createButton = user.can.create_invoice ? <CreateInvoiceButton brands={brands} /> : null;
 
   return (
@@ -23,10 +25,21 @@ export default function Invoices({ invoices, limit: LIMIT, brands, billing }: In
             ? `Create invoices, record payments and track what is still due. Showing the latest ${LIMIT}.`
             : `Invoices you have created. Showing the latest ${LIMIT}.`
         }
-        actions={createButton}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {billing?.can_configure ? (
+              <button type="button" className="btn-secondary" onClick={() => setSettingsOpen(true)}>
+                <CreditCard className="h-4 w-4" />
+                Payment settings
+              </button>
+            ) : null}
+            {createButton}
+          </div>
+        }
       />
 
-      {billing ? <CardPaymentsNotice billing={billing} canReload={user.can.manage_brands} /> : null}
+      {billing ? <CardPaymentsNotice billing={billing} canReload={user.can.manage_brands} onSetUp={() => setSettingsOpen(true)} /> : null}
+      {billing?.can_configure ? <PaymentSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} brands={billing.brands} /> : null}
 
       <div className="card overflow-hidden">
         {invoices.length === 0 ? (
@@ -52,7 +65,7 @@ export default function Invoices({ invoices, limit: LIMIT, brands, billing }: In
                       <span className="font-medium text-slate-900">{inv.number}</span>
                       <span className="block text-xs text-slate-500">{inv.brand.name}</span>
                     </td>
-                    <td className="max-w-[240px] truncate">
+                    <td className="max-w-[200px] truncate">
                       {inv.lead ? (
                         <Link href={`/leads/${inv.lead.id}`} className="text-teal-700 hover:underline" title={inv.client_name ?? inv.lead.name}>
                           {inv.client_name ?? inv.lead.name}
@@ -89,8 +102,10 @@ export default function Invoices({ invoices, limit: LIMIT, brands, billing }: In
   );
 }
 
-/** Says exactly why clients can't pay by card, so nobody has to guess */
-function CardPaymentsNotice({ billing, canReload }: { billing: BillingStatus; canReload: boolean }) {
+const nameList = (names: string[]) => (names.length > 3 ? `${names.length} brands` : names.join(", ").replace(/, ([^,]*)$/, " and $1"));
+
+/** Says exactly which brands can't take cards and why, with the way to fix it right there */
+function CardPaymentsNotice({ billing, canReload, onSetUp }: { billing: BillingStatus; canReload: boolean; onSetUp: () => void }) {
   const toast = useToast();
   const [reloading, setReloading] = useState(false);
 
@@ -105,17 +120,18 @@ function CardPaymentsNotice({ billing, canReload }: { billing: BillingStatus; ca
     window.location.reload();
   }
 
+  const off = billing.brands.filter((b) => !b.card_payments).map((b) => b.name);
+  const noWebhook = billing.brands.filter((b) => b.card_payments && !b.webhook).map((b) => b.name);
+
   let message: string | null = null;
-  if (billing.needs_reload) {
-    message = "Your Stripe keys are in the server's .env, but the app is still running on settings saved before you added them.";
-  } else if (billing.problem) {
-    message = billing.problem;
-  } else if (billing.missing.length > 0 && !billing.card_payments) {
-    message = `Clients can't pay by card yet. Add ${billing.missing.join(" and ")} to the server's .env.`;
-  } else if (!billing.card_payments) {
-    message = "Clients can't pay by card yet.";
-  } else if (!billing.webhook) {
-    message = "Card payments are on, but STRIPE_WEBHOOK_SECRET isn't set. A payment won't be recorded if the client closes the page straight after paying.";
+  if (billing.problem) {
+    message = `Check the keys in the server's .env. ${billing.problem}`;
+  } else if (off.length > 0) {
+    message = billing.needs_reload
+      ? `${nameList(off)} can't take card payments yet. The server's .env has Stripe keys, but the app is running on settings saved before they were added.`
+      : `${nameList(off)} can't take card payments yet.${billing.can_configure ? "" : " Ask a Super Admin to add the Stripe keys under Payment settings."}`;
+  } else if (noWebhook.length > 0) {
+    message = `Card payments are on, but ${nameList(noWebhook)} has no webhook. A payment won't be recorded if the client closes the page straight after paying.`;
   }
   if (!message) return null;
 
@@ -123,14 +139,15 @@ function CardPaymentsNotice({ billing, canReload }: { billing: BillingStatus; ca
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
       <CircleAlert className="h-4 w-4 shrink-0" />
       <p className="min-w-0 flex-1 basis-64">{message}</p>
-      {billing.needs_reload ? (
-        canReload ? (
-          <button type="button" className="btn-secondary btn-sm" onClick={() => void reload()} disabled={reloading}>
-            {reloading ? "Reloading…" : "Reload settings"}
-          </button>
-        ) : (
-          <span className="text-xs">Ask a Super Admin to reload the settings.</span>
-        )
+      {billing.needs_reload && off.length > 0 && canReload ? (
+        <button type="button" className="btn-secondary btn-sm" onClick={() => void reload()} disabled={reloading}>
+          {reloading ? "Reloading…" : "Reload settings"}
+        </button>
+      ) : null}
+      {billing.can_configure ? (
+        <button type="button" className="btn-primary btn-sm" onClick={onSetUp}>
+          {off.length > 0 ? "Set up card payments" : "Add webhook"}
+        </button>
       ) : null}
     </div>
   );

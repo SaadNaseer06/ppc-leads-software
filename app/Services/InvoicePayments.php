@@ -49,17 +49,18 @@ class InvoicePayments
      * webhook and the client's return to the site, so a repeat changes nothing.
      *
      * @param  array<string, mixed>  $intent
+     * @param  int|null  $brandId  when set, only this brand's invoices can be paid by it
      */
-    public function recordIntent(array $intent): bool
+    public function recordIntent(array $intent, ?int $brandId = null): bool
     {
         $invoiceId = $intent['metadata']['invoice_id'] ?? null;
         if (! $invoiceId || ($intent['status'] ?? null) !== 'succeeded') {
             return false;
         }
 
-        return DB::transaction(function () use ($intent, $invoiceId) {
+        return DB::transaction(function () use ($intent, $invoiceId, $brandId) {
             $invoice = Invoice::query()->lockForUpdate()->find($invoiceId);
-            if (! $invoice || $invoice->payments()->where('method', 'stripe')->where('external_ref', $intent['id'])->exists()) {
+            if (! $invoice || ($brandId && $invoice->brand_id !== $brandId) || $invoice->payments()->where('method', 'stripe')->where('external_ref', $intent['id'])->exists()) {
                 return false;
             }
             $amount = (int) $intent['amount_received'] / StripePayments::unitsPerMajor($invoice->currency);

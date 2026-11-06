@@ -46,10 +46,9 @@ class BrandController extends Controller
                 'waiting' => (int) ($waiting[$b->id] ?? 0),
                 'front_sales_reps' => (int) ($reps[$b->id] ?? 0),
                 'managers' => ($managers[$b->id] ?? collect())->map(fn ($m) => ['id' => $m->id, 'name' => $m->name])->values(),
-                'branding' => $b->branding(),
+                'branding' => [...$b->branding(), 'card_payments' => $stripe->configured($b)],
             ]),
             'billing' => [
-                'card_payments' => $stripe->configured(),
                 'dns_target' => parse_url((string) config('app.url'), PHP_URL_HOST),
             ],
             'manager_options' => $user->canAssignBrandManagers()

@@ -186,6 +186,12 @@ class User extends Authenticatable
         return $this->managesBrands();
     }
 
+    /** Stripe keys decide where clients' money goes, so this stays with the owner of the system */
+    public function canManagePayments(): bool
+    {
+        return $this->role === Role::SuperAdmin;
+    }
+
     public function canAccessBrand(int $brandId): bool
     {
         return $this->hasGlobalAccess() || in_array($brandId, $this->brandIds(), true);

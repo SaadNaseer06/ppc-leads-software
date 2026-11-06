@@ -10,8 +10,9 @@
     $settled = $invoice->status === 'paid';
     $cancelled = $invoice->status === 'cancelled';
     $cardForm = $payable && $cardPayments;
+    $testMode = $cardForm && ! str_contains((string) $stripeKey, '_live_');
     $stripeSetup = [
-        'key' => config('services.stripe.publishable'),
+        'key' => $stripeKey,
         'amount' => $amountDue,
         'currency' => strtolower($invoice->currency),
         'accent' => $theme['accent'],
@@ -188,6 +189,9 @@
                 <p class="paying">To <strong>{{ $merchant }}</strong></p>
                 <hr class="rule">
 
+                @if($testMode)
+                    <div class="notice info">Test mode: no real money will be taken.</div>
+                @endif
                 @if($cardForm)
                     <form id="pay-form">
                         <div class="loading" id="card-loading">Loading secure card form…</div>

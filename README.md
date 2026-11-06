@@ -40,6 +40,9 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
   PDF and pay by card on the page, or read your payment instructions. Part payments, paid and cancelled invoices are
   tracked on the Finance page and the lead's timeline. Admins and Brand Managers can delete invoices: the link stops
   working and the invoice leaves all totals, but the record stays in the database and its number is never reused.
+- **Card payments per brand.** A Super Admin adds a brand's merchant name and Stripe keys under Payment settings on the
+  Invoices page. Stripe checks the key before it's saved, secrets are stored encrypted, and each brand's money goes to
+  its own Stripe account. Brands with no keys of their own use `STRIPE_*` from `.env`, if set.
 - **Brand-themed invoices.** Each brand sets its logo, colour, merchant name and contact details under Brands &
   routing, and its invoice pages and PDFs follow them. A brand can also connect its own domain for invoice links.
 - **Sales analytics.** Invoiced, collected and outstanding totals, a trend chart, and breakdowns by brand, rep, channel
@@ -119,7 +122,7 @@ with a token from `POST /api/auth/login` (`Authorization: Bearer …`). Errors a
 |---|---|
 | `POST /api/intake/{key}` | Lead from a website: JSON, form-encoded, multipart or `text/plain` JSON. Rate-limited 20 / 10 min per key and IP. |
 | `POST /api/webhooks/tawk` | Tawk.to webhook (HMAC-SHA1 signed, retries de-duplicated by `X-Hook-Event-Id`). |
-| `POST /api/webhooks/stripe` | Stripe payment events (signature checked, each payment recorded once). |
+| `POST /api/webhooks/stripe` · `POST /api/webhooks/stripe/{brand}` | Stripe payment events for the `.env` account, or a brand's own (signature checked, each payment recorded once). |
 | `GET /pay/{token}` · `POST /pay/{token}/intent` · `GET /pay/{token}/pdf` | The client's invoice page, the payment its card form confirms, and the PDF. Rate-limited 60 / min per IP. |
 | `POST /api/auth/login` | `{email, password}` → `{token, user}` |
 
@@ -130,7 +133,7 @@ with a token from `POST /api/auth/login` (`Authorization: Bearer …`). Errors a
 | `POST /api/leads/bulk` · `GET /api/leads/export` | Bulk assign/status (≤ 500); streaming CSV |
 | `GET /api/chats` · `POST /api/chats/{id}/messages` · `POST /api/chats/{id}/end` · `POST /api/chats/{id}/convert` · `POST /api/chats/{id}/transfer` · `POST /api/chats/delete` | Inbox, reply, end, convert to a lead, send to a Front Sales rep (`{to_id, note, convert}`), delete |
 | `GET/POST /api/websites` · `GET/PATCH /api/websites/{id}` | Websites, snippets, delivery log |
-| `GET/POST /api/admin/users` · `PATCH /api/admin/users/{id}` · `GET/POST/PATCH /api/admin/brands` · `PATCH /api/admin/brands/{id}/manager` · `PATCH /api/admin/brands/{id}/branding` · `POST/DELETE /api/admin/brands/{id}/logo` · `POST /api/admin/brands/{id}/domain-check` | Team; brands and auto-assign; appoint a brand's manager; invoice branding and domain |
+| `GET/POST /api/admin/users` · `PATCH /api/admin/users/{id}` · `GET/POST/PATCH /api/admin/brands` · `PATCH /api/admin/brands/{id}/manager` · `PATCH/DELETE /api/admin/brands/{id}/payments` · `PATCH /api/admin/brands/{id}/branding` · `POST/DELETE /api/admin/brands/{id}/logo` · `POST /api/admin/brands/{id}/domain-check` | Team; brands and auto-assign; appoint a brand's manager; invoice branding and domain |
 | `GET/POST /api/invoices` · `PATCH/DELETE /api/invoices/{id}` · `POST /api/billing/reload-settings` · `POST /api/invoices/{id}/payments` · `GET /api/invoices/{id}/pdf` · `GET /api/finance` · `POST /api/finance/bulk-pdf` | Invoices (`lead_id` or `brand_id` + `client_name`, `client_email`, `client_phone`, `client_company`, `client_address`, `items[]`, `merchant_name`, `discount`, `tax_rate`, `due_date`; status: sent / paid / cancelled; delete with `?force=1` once payments exist), payments, PDFs, finance |
 | `GET /api/reports/sales` · `GET /api/reports/sales/export` | Sales analytics and CSV (filters `from to brand website rep channel status`) |
 

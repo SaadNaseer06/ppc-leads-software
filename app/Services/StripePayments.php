@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Brand;
 use App\Models\Invoice;
 use Dotenv\Dotenv;
 use Illuminate\Support\Facades\Http;
@@ -29,10 +30,84 @@ class StripePayments
         'STRIPE_WEBHOOK_SECRET' => 'services.stripe.webhook_secret',
     ];
 
-    public function configured(): bool
+    /** Whether this brand's clients can pay by card. With no brand: the server-wide keys in .env. */
+    public function configured(?Brand $brand = null): bool
     {
-        return $this->keyProblem() === null
-            && config('services.stripe.secret') && config('services.stripe.publishable');
+        $account = $this->account($brand);
+
+        return $account['secret'] && $account['publishable'] && $this->keyProblem($account['publishable'], $account['secret']) === null;
+    }
+
+    /**
+     * A brand's own Stripe account, or the server-wide keys if it has none.
+     *
+     * @return array{publishable: ?string, secret: ?string, webhook: ?string, own: bool}
+     */
+    public function account(?Brand $brand = null): array
+    {
+        if ($brand?->stripe_secret_key) {
+            return [
+                'publishable' => $brand->stripe_publishable_key,
+                'secret' => $brand->stripe_secret_key,
+                'webhook' => $brand->stripe_webhook_secret,
+                'own' => true,
+            ];
+        }
+
+        return [
+            'publishable' => config('services.stripe.publishable'),
+            'secret' => config('services.stripe.secret'),
+            'webhook' => config('services.stripe.webhook_secret'),
+            'own' => false,
+        ];
+    }
+
+    /**
+     * What the Invoices page shows about a brand. Details go to the people who can change them,
+     * and never include a secret: only its last four characters.
+     *
+     * @return array<string, mixed>
+     */
+    public function brandStatus(Brand $brand, bool $details): array
+    {
+        $account = $this->account($brand);
+        $on = $this->configured($brand);
+        $status = ['id' => $brand->id, 'name' => $brand->name, 'card_payments' => $on, 'webhook' => (bool) $account['webhook']];
+        if (! $details) {
+            return $status;
+        }
+
+        return [
+            ...$status,
+            'merchant_name' => $brand->merchant_name,
+            'source' => $account['own'] ? 'own' : ($on ? 'env' : null),
+            'mode' => $on ? (str_contains((string) $account['publishable'], '_live_') ? 'live' : 'test') : null,
+            'account_name' => $account['own'] ? $brand->stripe_account_name : null,
+            'publishable_key' => $account['own'] ? $brand->stripe_publishable_key : null,
+            'secret_hint' => $account['own'] ? '…'.substr((string) $brand->stripe_secret_key, -4) : null,
+            'webhook_url' => url("/api/webhooks/stripe/{$brand->id}"),
+        ];
+    }
+
+    /**
+     * Asks Stripe whether a secret key works, before anyone relies on it.
+     *
+     * @return array{valid: bool, name: ?string}
+     */
+    public function checkSecretKey(string $secret): array
+    {
+        $response = $this->client(null, $secret)->get('/v1/account');
+
+        // A restricted key may not read the account, but Stripe still recognised it
+        if ($response->status() === 403) {
+            return ['valid' => true, 'name' => null];
+        }
+        if ($response->status() === 401) {
+            return ['valid' => false, 'name' => null];
+        }
+        $response->throw();
+
+        return ['valid' => true, 'name' => $response->json('business_profile.name') ?: $response->json('settings.dashboard.display_name')];
     }
 
     /**
@@ -52,17 +127,14 @@ class StripePayments
             'missing' => array_values(array_filter($unset, fn ($name) => empty($file[$name]))),
             // In .env, but not what the running app has: it is still on settings cached before the edit
             'needs_reload' => collect(self::SETTINGS)->contains(fn ($key, $name) => ! empty($file[$name]) && $file[$name] !== config($key)),
-            'problem' => $this->keyProblem(),
+            'problem' => $this->keyProblem((string) config('services.stripe.publishable'), (string) config('services.stripe.secret')),
             'webhook' => (bool) config('services.stripe.webhook_secret'),
         ];
     }
 
     /** A swapped or mixed pair would show a card form that can only fail */
-    private function keyProblem(): ?string
+    public function keyProblem(string $publishable, string $secret): ?string
     {
-        $publishable = (string) config('services.stripe.publishable');
-        $secret = (string) config('services.stripe.secret');
-
         if ($publishable !== '' && ! str_starts_with($publishable, 'pk_')) {
             return 'STRIPE_PUBLISHABLE_KEY should start with pk_. Check the two keys are not swapped.';
         }
@@ -106,19 +178,20 @@ class StripePayments
     public function intentFor(Invoice $invoice): array
     {
         $amount = self::amountDue($invoice);
-        $intent = $invoice->stripe_intent_id ? $this->intent($invoice->stripe_intent_id) : null;
+        $brand = $invoice->brand;
+        $intent = $invoice->stripe_intent_id ? $this->intent($invoice->stripe_intent_id, $brand) : null;
 
         if ($intent && in_array($intent['status'], self::OPEN_STATUSES, true)) {
             return (int) $intent['amount'] === $amount
                 ? $intent
-                : $this->client()->asForm()->post('/v1/payment_intents/'.rawurlencode($intent['id']), ['amount' => $amount])->throw()->json();
+                : $this->client($brand)->asForm()->post('/v1/payment_intents/'.rawurlencode($intent['id']), ['amount' => $amount])->throw()->json();
         }
         if ($intent && in_array($intent['status'], ['processing', 'succeeded'], true)) {
             return $intent;
         }
 
         $merchant = $invoice->merchantName();
-        $created = $this->client()->asForm()->post('/v1/payment_intents', array_filter([
+        $created = $this->client($brand)->asForm()->post('/v1/payment_intents', array_filter([
             'amount' => $amount,
             'currency' => strtolower($invoice->currency),
             'description' => "Invoice {$invoice->number} · {$merchant}",
@@ -133,29 +206,29 @@ class StripePayments
     /** After deleting or cancelling, a tab left open must not still be able to charge the client */
     public function cancelOpenIntent(Invoice $invoice): void
     {
-        if (! $invoice->stripe_intent_id || ! $this->configured()) {
+        $brand = $invoice->brand;
+        if (! $invoice->stripe_intent_id || ! $this->configured($brand)) {
             return;
         }
-        rescue(function () use ($invoice) {
-            $intent = $this->intent($invoice->stripe_intent_id);
+        rescue(function () use ($invoice, $brand) {
+            $intent = $this->intent($invoice->stripe_intent_id, $brand);
             if ($intent && in_array($intent['status'], self::OPEN_STATUSES, true)) {
-                $this->client()->asForm()->post('/v1/payment_intents/'.rawurlencode($intent['id']).'/cancel')->throw();
+                $this->client($brand)->asForm()->post('/v1/payment_intents/'.rawurlencode($intent['id']).'/cancel')->throw();
             }
         });
     }
 
     /** @return array<string, mixed>|null */
-    public function intent(string $id): ?array
+    public function intent(string $id, ?Brand $brand = null): ?array
     {
-        $response = $this->client()->get('/v1/payment_intents/'.rawurlencode($id));
+        $response = $this->client($brand)->get('/v1/payment_intents/'.rawurlencode($id));
 
         return $response->successful() ? $response->json() : null;
     }
 
     /** Checks a webhook really came from Stripe: "Stripe-Signature: t=...,v1=..." */
-    public function validSignature(string $payload, ?string $header): bool
+    public function validSignature(string $payload, ?string $header, ?string $secret): bool
     {
-        $secret = config('services.stripe.webhook_secret');
         if (! $secret || ! $header) {
             return false;
         }
@@ -184,10 +257,10 @@ class StripePayments
         return false;
     }
 
-    private function client()
+    private function client(?Brand $brand = null, ?string $secret = null)
     {
         return Http::baseUrl(config('services.stripe.api_base'))
-            ->withToken((string) config('services.stripe.secret'))
+            ->withToken((string) ($secret ?? $this->account($brand)['secret']))
             ->timeout(15);
     }
 }
