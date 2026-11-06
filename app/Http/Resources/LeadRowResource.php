@@ -23,7 +23,7 @@ class LeadRowResource extends JsonResource
             'submission_count' => $this->submission_count,
             'created_at' => $this->created_at,
             'website' => $this->website?->only(['id', 'name']),
-            'brand' => $this->brand?->only(['id', 'name']),
+            'brand' => $this->brand?->only(['id', 'name', 'merchant_name']),
             'assignee' => $this->assignee?->only(['id', 'name']),
         ];
     }

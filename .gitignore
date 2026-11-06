@@ -15,6 +15,7 @@
 /node_modules
 /public/hot
 /public/storage
+/public/brand-logos
 /storage/*.key
 /storage/pail
 /vendor

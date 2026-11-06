@@ -81,7 +81,7 @@ class LeadController extends Controller
     {
         $user = $request->user();
         $lead = Lead::query()->visibleTo($user)
-            ->with(['brand:id,name', 'website:id,name,domain', 'assignee:id,name,email'])
+            ->with(['brand:id,name,merchant_name', 'website:id,name,domain', 'assignee:id,name,email'])
             ->findOrFail($id);
 
         $activities = $lead->activities()->with('actor:id,name')->latest('created_at')->latest('id')->limit(100)->get();

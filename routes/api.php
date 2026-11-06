@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BrandBrandingController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\DashboardController;
@@ -76,6 +77,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::patch('/admin/brands', [BrandController::class, 'update']);
     Route::delete('/admin/brands/{id}', [BrandController::class, 'destroy'])->whereNumber('id');
     Route::patch('/admin/brands/{id}/manager', [BrandController::class, 'setManager'])->whereNumber('id');
+    Route::patch('/admin/brands/{id}/branding', [BrandBrandingController::class, 'update'])->whereNumber('id');
+    Route::post('/admin/brands/{id}/logo', [BrandBrandingController::class, 'storeLogo'])->whereNumber('id');
+    Route::delete('/admin/brands/{id}/logo', [BrandBrandingController::class, 'destroyLogo'])->whereNumber('id');
+    Route::post('/admin/brands/{id}/domain-check', [BrandBrandingController::class, 'checkDomain'])->whereNumber('id');
 
     Route::get('/invoices', [InvoiceController::class, 'index']);
     Route::post('/invoices', [InvoiceController::class, 'store']);

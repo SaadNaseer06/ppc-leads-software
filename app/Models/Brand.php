@@ -3,18 +3,91 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Services\BrandTheme;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Brand extends Model
 {
-    protected $fillable = ['name', 'slug', 'auto_assign_enabled', 'round_robin_last_user_id'];
+    protected $fillable = [
+        'name', 'slug', 'auto_assign_enabled', 'round_robin_last_user_id',
+        'merchant_name', 'brand_color', 'logo_path', 'billing_email', 'billing_address', 'pay_domain', 'pay_domain_verified_at',
+    ];
+
+    /** @var array<int, string>|null Connected invoice domains by brand, read once per request */
+    private static ?array $payHosts = null;
 
     protected function casts(): array
     {
-        return ['auto_assign_enabled' => 'boolean'];
+        return ['auto_assign_enabled' => 'boolean', 'pay_domain_verified_at' => 'datetime'];
+    }
+
+    protected static function booted(): void
+    {
+        static::saved(fn () => self::$payHosts = null);
+        static::deleted(function (Brand $brand) {
+            self::$payHosts = null;
+            $brand->forgetLogo();
+        });
+    }
+
+    /** The brand's connected domain for invoice links. Lists of invoices share one query. */
+    public static function payHost(int $brandId): ?string
+    {
+        self::$payHosts ??= self::whereNotNull('pay_domain_verified_at')->pluck('pay_domain', 'id')->all();
+
+        return self::$payHosts[$brandId] ?? null;
+    }
+
+    /** Who the client is paying, unless an invoice names someone else */
+    public function merchantName(): string
+    {
+        return $this->merchant_name ?: $this->name;
+    }
+
+    /** @return array{accent: string, on_accent: string, ink: string, soft: string} */
+    public function theme(): array
+    {
+        return BrandTheme::from($this->brand_color);
+    }
+
+    /** Relative, so it loads on the app's address and the brand's own domain alike */
+    public function logoUrl(): ?string
+    {
+        return $this->logo_path ? "/{$this->logo_path}" : null;
+    }
+
+    /** PDFs can't fetch files, so the logo goes in as data */
+    public function logoDataUri(): ?string
+    {
+        $disk = Storage::disk('brand_logos');
+        $file = $this->logo_path ? basename($this->logo_path) : null;
+        if (! $file || ! $disk->exists($file)) {
+            return null;
+        }
+        $type = str_ends_with($file, '.png') ? 'png' : 'jpeg';
+
+        return "data:image/{$type};base64,".base64_encode($disk->get($file));
+    }
+
+    public function forgetLogo(): void
+    {
+        if ($this->logo_path) {
+            Storage::disk('brand_logos')->delete(basename($this->logo_path));
+        }
+    }
+
+    /** @return array<string, mixed> what the Brands page edits */
+    public function branding(): array
+    {
+        return [
+            ...$this->only(['merchant_name', 'brand_color', 'billing_email', 'billing_address', 'pay_domain']),
+            'logo_url' => $this->logoUrl(),
+            'domain_connected' => $this->pay_domain_verified_at !== null,
+        ];
     }
 
     public function users(): BelongsToMany

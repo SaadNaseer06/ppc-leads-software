@@ -45,25 +45,25 @@ class InvoicePayments
     }
 
     /**
-     * Records a completed Stripe Checkout session. Stripe may report the same session through
-     * the webhook and the client's return to the site, so a repeat changes nothing.
+     * Records a completed Stripe payment. Stripe may report the same payment through the
+     * webhook and the client's return to the site, so a repeat changes nothing.
      *
-     * @param  array<string, mixed>  $session
+     * @param  array<string, mixed>  $intent
      */
-    public function recordCheckout(array $session): bool
+    public function recordIntent(array $intent): bool
     {
-        $invoiceId = $session['metadata']['invoice_id'] ?? null;
-        if (! $invoiceId || ($session['payment_status'] ?? null) !== 'paid') {
+        $invoiceId = $intent['metadata']['invoice_id'] ?? null;
+        if (! $invoiceId || ($intent['status'] ?? null) !== 'succeeded') {
             return false;
         }
 
-        return DB::transaction(function () use ($session, $invoiceId) {
+        return DB::transaction(function () use ($intent, $invoiceId) {
             $invoice = Invoice::query()->lockForUpdate()->find($invoiceId);
-            if (! $invoice || $invoice->payments()->where('method', 'stripe')->where('external_ref', $session['id'])->exists()) {
+            if (! $invoice || $invoice->payments()->where('method', 'stripe')->where('external_ref', $intent['id'])->exists()) {
                 return false;
             }
-            $amount = (int) $session['amount_total'] / StripeCheckout::unitsPerMajor($invoice->currency);
-            $this->add($invoice, $amount, 'stripe', $session['id'], 'Paid online by the client');
+            $amount = (int) $intent['amount_received'] / StripePayments::unitsPerMajor($invoice->currency);
+            $this->add($invoice, $amount, 'stripe', $intent['id'], 'Paid online by the client');
 
             return true;
         });

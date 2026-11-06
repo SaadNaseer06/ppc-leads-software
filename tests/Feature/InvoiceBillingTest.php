@@ -37,13 +37,14 @@ class InvoiceBillingTest extends TestCase
         return Invoice::find($id);
     }
 
-    private function stripeSession(Invoice $invoice, array $overrides = []): array
+    private function stripeIntent(Invoice $invoice, array $overrides = []): array
     {
         return [
-            'id' => 'cs_test_123',
-            'url' => 'https://checkout.stripe.test/pay/cs_test_123',
-            'payment_status' => 'paid',
-            'amount_total' => 15000,
+            'id' => 'pi_test_123',
+            'client_secret' => 'pi_test_123_secret_abc',
+            'status' => 'succeeded',
+            'amount' => 15000,
+            'amount_received' => 15000,
             'metadata' => ['invoice_id' => (string) $invoice->id],
             ...$overrides,
         ];
@@ -117,7 +118,7 @@ class InvoiceBillingTest extends TestCase
 
         $this->get("/pay/{$invoice->pay_token}")->assertOk()
             ->assertHeader('X-Robots-Tag', 'noindex, nofollow')
-            ->assertSee('Apex Roofing')->assertSee($invoice->number)->assertSee('Roof repair')->assertSee('USD 150.00')
+            ->assertSee('Apex Roofing')->assertSee($invoice->number)->assertSee('Roof repair')->assertSee('$150.00')
             ->assertSee('Please contact Apex Roofing');
         $this->get("/pay/{$invoice->pay_token}/pdf")->assertOk();
 
@@ -139,7 +140,7 @@ class InvoiceBillingTest extends TestCase
 
         $this->patchJson("/api/invoices/{$invoice->id}", ['status' => 'sent'])->assertOk();
         $this->postJson("/api/invoices/{$invoice->id}/payments", ['amount' => 50, 'method' => 'cash'])->assertCreated();
-        $this->get("/pay/{$invoice->pay_token}")->assertSee('Balance due')->assertSee('USD 100.00');
+        $this->get("/pay/{$invoice->pay_token}")->assertSee('Balance due')->assertSee('$100.00');
 
         $this->postJson("/api/invoices/{$invoice->id}/payments", ['amount' => 100, 'method' => 'cash'])->assertCreated();
         $this->get("/pay/{$invoice->pay_token}")->assertSee('paid in full');
@@ -160,80 +161,151 @@ class InvoiceBillingTest extends TestCase
         $this->patchJson("/api/invoices/{$invoice->id}", ['status' => 'sent'])->assertOk()->assertJsonPath('status', 'paid');
     }
 
-    public function test_a_client_pays_by_card_through_stripe_checkout(): void
+    private function turnOnCards(): void
     {
-        config(['services.stripe.secret' => 'sk_test_abc']);
+        config(['services.stripe.secret' => 'sk_test_abc', 'services.stripe.publishable' => 'pk_test_abc']);
+    }
+
+    public function test_a_client_pays_by_card_on_the_invoice_page(): void
+    {
+        $this->turnOnCards();
         $invoice = $this->invoice();
+        $open = $this->stripeIntent($invoice, ['status' => 'requires_payment_method', 'amount_received' => 0]);
         Http::fake([
-            '*/v1/checkout/sessions' => Http::response($this->stripeSession($invoice)),
-            '*/v1/checkout/sessions/*' => Http::response($this->stripeSession($invoice)),
+            '*/v1/payment_intents' => Http::response($open),
+            '*/v1/payment_intents/*' => Http::response($this->stripeIntent($invoice)),
         ]);
 
-        $this->get("/pay/{$invoice->pay_token}")->assertSee('Pay USD 150.00')->assertSee('Secure card payment');
+        $this->get("/pay/{$invoice->pay_token}")->assertSee('Pay $150.00')->assertSee('pk_test_abc')->assertSee('js.stripe.com')
+            ->assertDontSee('sk_test_abc');
 
-        $this->post("/pay/{$invoice->pay_token}/checkout")->assertRedirect('https://checkout.stripe.test/pay/cs_test_123');
-        Http::assertSent(fn (HttpRequest $r) => $r->url() === 'https://api.stripe.com/v1/checkout/sessions'
-            && $r['line_items'][0]['price_data']['unit_amount'] === 15000
-            && $r['line_items'][0]['price_data']['currency'] === 'usd'
-            && $r['customer_email'] === 'ada@example.com'
+        // No session or CSRF token: a client on a brand's domain has neither
+        $this->app['auth']->forgetGuards();
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertOk()->assertExactJson(['client_secret' => 'pi_test_123_secret_abc']);
+        Http::assertSent(fn (HttpRequest $r) => $r->url() === 'https://api.stripe.com/v1/payment_intents'
+            && (int) $r['amount'] === 15000
+            && $r['currency'] === 'usd'
+            && $r['receipt_email'] === 'ada@example.com'
             && (int) $r['metadata']['invoice_id'] === $invoice->id
+            && str_contains($r['description'], 'Apex Roofing')
             && $r->hasHeader('Authorization', 'Bearer sk_test_abc'));
+        $this->assertSame('pi_test_123', $invoice->fresh()->stripe_intent_id);
 
         // Back from Stripe: recorded once however many times the page is reloaded
-        $this->get("/pay/{$invoice->pay_token}/return?session_id=cs_test_123")->assertRedirect("/pay/{$invoice->pay_token}");
-        $this->get("/pay/{$invoice->pay_token}/return?session_id=cs_test_123");
+        $this->get("/pay/{$invoice->pay_token}/return?payment_intent=pi_test_123")->assertRedirect("/pay/{$invoice->pay_token}");
+        $this->get("/pay/{$invoice->pay_token}/return?payment_intent=pi_test_123");
         $this->assertSame(1, PaymentTransaction::count());
         $this->assertSame('paid', $invoice->fresh()->status);
         $this->assertSame('stripe', PaymentTransaction::first()->method);
         $this->assertSame('payment', $invoice->lead->activities()->latest('id')->first()->type);
-        $this->get("/pay/{$invoice->pay_token}")->assertSee('paid in full')->assertDontSee('Pay USD');
+        $this->get("/pay/{$invoice->pay_token}")->assertSee('paid in full')->assertDontSee('Pay $')->assertDontSee('js.stripe.com');
+    }
+
+    public function test_two_open_tabs_share_one_payment_so_nobody_is_charged_twice(): void
+    {
+        $this->turnOnCards();
+        $invoice = $this->invoice();
+        $open = $this->stripeIntent($invoice, ['status' => 'requires_payment_method', 'amount_received' => 0]);
+        Http::fake(['*/v1/payment_intents' => Http::response($open), '*/v1/payment_intents/*' => Http::response($open)]);
+
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertOk();
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertOk();
+
+        Http::assertSentCount(2); // created once, then only read back
+        Http::assertNotSent(fn (HttpRequest $r) => $r->method() === 'POST' && str_contains($r->url(), 'pi_test_123'));
+    }
+
+    public function test_an_open_payment_follows_the_balance(): void
+    {
+        $this->turnOnCards();
+        $invoice = $this->invoice();
+        $invoice->update(['stripe_intent_id' => 'pi_test_123']);
+        $this->postJson("/api/invoices/{$invoice->id}/payments", ['amount' => 50, 'method' => 'cash'])->assertCreated();
+        Http::fake(['*/v1/payment_intents/*' => function (HttpRequest $r) use ($invoice) {
+            return Http::response($this->stripeIntent($invoice, ['status' => 'requires_payment_method', 'amount' => $r->method() === 'POST' ? 10000 : 15000]));
+        }]);
+
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertOk();
+
+        Http::assertSent(fn (HttpRequest $r) => $r->method() === 'POST' && (int) $r['amount'] === 10000);
+    }
+
+    public function test_a_payment_that_already_went_through_is_recorded_not_repeated(): void
+    {
+        $this->turnOnCards();
+        $invoice = $this->invoice();
+        $invoice->update(['stripe_intent_id' => 'pi_test_123']);
+        Http::fake(['*/v1/payment_intents/*' => Http::response($this->stripeIntent($invoice))]);
+
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertStatus(409)->assertJsonPath('reload', true);
+
+        $this->assertSame('paid', $invoice->fresh()->status);
+        $this->assertSame(1, PaymentTransaction::count());
     }
 
     public function test_a_return_url_cannot_mark_an_invoice_paid_by_itself(): void
     {
-        config(['services.stripe.secret' => 'sk_test_abc']);
+        $this->turnOnCards();
         $invoice = $this->invoice();
 
-        // Unpaid session, then a paid session belonging to a different invoice
+        // Unpaid, then a paid one belonging to a different invoice, then one Stripe doesn't know
         Http::fake(['*' => Http::sequence()
-            ->push($this->stripeSession($invoice, ['payment_status' => 'unpaid']))
-            ->push($this->stripeSession($invoice, ['metadata' => ['invoice_id' => '999999']]))
+            ->push($this->stripeIntent($invoice, ['status' => 'requires_payment_method']))
+            ->push($this->stripeIntent($invoice, ['metadata' => ['invoice_id' => '999999']]))
             ->push([], 404)]);
 
-        $this->get("/pay/{$invoice->pay_token}/return?session_id=cs_x");
-        $this->get("/pay/{$invoice->pay_token}/return?session_id=cs_x");
-        $this->get("/pay/{$invoice->pay_token}/return?session_id=cs_forged");
+        $this->get("/pay/{$invoice->pay_token}/return?payment_intent=pi_x")->assertRedirect("/pay/{$invoice->pay_token}?payment=failed");
+        $this->get("/pay/{$invoice->pay_token}/return?payment_intent=pi_other");
+        $this->get("/pay/{$invoice->pay_token}/return?payment_intent=pi_forged");
         $this->assertSame(0, PaymentTransaction::count());
         $this->assertSame('sent', $invoice->fresh()->status);
     }
 
+    public function test_a_declined_card_tells_the_client_they_were_not_charged(): void
+    {
+        $this->turnOnCards();
+        $invoice = $this->invoice();
+
+        $this->get("/pay/{$invoice->pay_token}?payment=failed")->assertSee("Your card wasn't charged", false);
+        // Crafting the link can't claim the invoice was paid
+        $this->get("/pay/{$invoice->pay_token}?payment=success")->assertDontSee('Payment received')->assertSee('Pay $150.00');
+    }
+
     public function test_when_stripe_fails_the_client_sees_a_clear_message(): void
     {
-        config(['services.stripe.secret' => 'sk_test_abc']);
+        $this->turnOnCards();
         $invoice = $this->invoice();
         Http::fake(['*' => Http::response(['error' => ['message' => 'nope']], 500)]);
 
-        $this->post("/pay/{$invoice->pay_token}/checkout")->assertRedirect("/pay/{$invoice->pay_token}")
-            ->assertSessionHas('pay_error');
-        $this->followingRedirects()->post("/pay/{$invoice->pay_token}/checkout")->assertSee('Online payment is unavailable');
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertStatus(503)->assertJsonPath('error', 'Card payment is unavailable right now. You have not been charged. Please try again shortly.');
+        $this->assertNull($invoice->fresh()->stripe_intent_id);
     }
 
     public function test_a_paid_or_cancelled_invoice_cannot_start_a_payment(): void
     {
-        config(['services.stripe.secret' => 'sk_test_abc']);
+        $this->turnOnCards();
         Http::fake();
         $invoice = $this->invoice();
         $this->patchJson("/api/invoices/{$invoice->id}", ['status' => 'cancelled'])->assertOk();
 
-        $this->post("/pay/{$invoice->pay_token}/checkout")->assertRedirect("/pay/{$invoice->pay_token}");
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertStatus(409)->assertJsonPath('reload', true);
         Http::assertNothingSent();
+    }
+
+    public function test_the_card_form_stays_off_until_both_stripe_keys_are_set(): void
+    {
+        config(['services.stripe.secret' => 'sk_test_abc', 'services.stripe.publishable' => null]);
+        $invoice = $this->invoice();
+
+        $this->get("/pay/{$invoice->pay_token}")->assertDontSee('js.stripe.com')->assertSee('Please contact Apex Roofing');
+        $this->postJson("/pay/{$invoice->pay_token}/intent")->assertStatus(409);
     }
 
     public function test_stripe_webhooks_must_be_signed_and_are_recorded_once(): void
     {
         config(['services.stripe.webhook_secret' => 'whsec_test']);
         $invoice = $this->invoice();
-        $event = ['id' => 'evt_1', 'type' => 'checkout.session.completed', 'data' => ['object' => $this->stripeSession($invoice)]];
+        $event = ['id' => 'evt_1', 'type' => 'payment_intent.succeeded', 'data' => ['object' => $this->stripeIntent($invoice)]];
 
         $this->stripeWebhook($event, 'forged-signature')->assertStatus(400);
         $this->assertSame(0, PaymentTransaction::count());
@@ -248,7 +320,7 @@ class InvoiceBillingTest extends TestCase
     {
         config(['services.stripe.webhook_secret' => 'whsec_test']);
         $invoice = $this->invoice();
-        $payload = json_encode(['id' => 'evt_2', 'type' => 'checkout.session.completed', 'data' => ['object' => $this->stripeSession($invoice)]]);
+        $payload = json_encode(['id' => 'evt_2', 'type' => 'payment_intent.succeeded', 'data' => ['object' => $this->stripeIntent($invoice)]]);
         $time = time() - 3600;
         $signature = hash_hmac('sha256', "{$time}.{$payload}", 'whsec_test');
 

@@ -152,7 +152,7 @@ class LeadQuery
         if ($backwards) {
             $rows = $rows->reverse()->values();
         }
-        $rows->load(['website:id,name', 'brand:id,name', 'assignee:id,name']);
+        $rows->load(['website:id,name', 'brand:id,name,merchant_name', 'assignee:id,name']);
 
         $first = $rows->first();
         $last = $rows->last();

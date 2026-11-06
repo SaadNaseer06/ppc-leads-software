@@ -1,14 +1,23 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
-import { CheckCircle2, ExternalLink, Mail, Plus, X } from "lucide-react";
+import { CheckCircle2, CircleAlert, ExternalLink, Mail, Plus, X } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Modal } from "@/components/ui/modal";
 import { apiRequest } from "@/components/ui/toast";
 
-type LeadOption = { id: number; name: string; email: string | null; company: string | null };
+type LeadBrand = { name: string; merchant_name?: string | null };
+type LeadOption = { id: number; name: string; email: string | null; company: string | null; brand?: LeadBrand | null };
 type Item = { key: number; label: string; quantity: string; unit_price: string };
-type Created = { number: string; amount: string; currency: string; pay_url: string; lead: { name: string; email: string | null } };
+type Created = {
+  number: string;
+  amount: string;
+  currency: string;
+  merchant_name: string;
+  pay_url: string;
+  card_payments: boolean;
+  lead: { name: string; email: string | null };
+};
 
 const CURRENCY = "USD";
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -58,6 +67,9 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
   const nextKey = useRef(1);
   const [items, setItems] = useState<Item[]>([{ key: 0, label: "", quantity: "1", unit_price: "" }]);
   const [leadId, setLeadId] = useState<number | "">(lead?.id ?? "");
+  const [pickedBrand, setPickedBrand] = useState<LeadBrand | null>(null);
+  // Follows the client's brand until someone types their own
+  const [typedMerchant, setTypedMerchant] = useState<string | null>(null);
   const [discount, setDiscount] = useState("");
   const [taxRate, setTaxRate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -72,6 +84,9 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
     const tax = round((subtotal - off) * (number(taxRate) / 100));
     return { subtotal, off, tax, total: round(subtotal - off + tax) };
   }, [items, discount, taxRate]);
+
+  const brand = lead?.brand ?? pickedBrand;
+  const merchant = typedMerchant ?? brand?.merchant_name ?? brand?.name ?? "";
 
   const update = (key: number, change: Partial<Item>) => setItems((all) => all.map((i) => (i.key === key ? { ...i, ...change } : i)));
 
@@ -92,6 +107,7 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
         tax_rate: number(taxRate) || null,
         due_date: dueDate || null,
         description: notes.trim() || null,
+        merchant_name: merchant.trim() || null,
         currency: CURRENCY,
       },
     });
@@ -111,8 +127,27 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
           {lead.email ? ` · ${lead.email}` : ""}
         </p>
       ) : (
-        <LeadPicker value={leadId} onChange={setLeadId} />
+        <LeadPicker
+          value={leadId}
+          onChange={(id, picked) => {
+            setLeadId(id);
+            setPickedBrand(picked?.brand ?? null);
+          }}
+        />
       )}
+
+      <div>
+        <label className="label" htmlFor="inv-merchant">Merchant name</label>
+        <input
+          id="inv-merchant"
+          className="input"
+          value={merchant}
+          onChange={(e) => setTypedMerchant(e.target.value)}
+          maxLength={120}
+          placeholder={brand ? brand.name : "Choose the client first"}
+        />
+        <p className="mt-1.5 text-xs text-slate-500">Shown to the client as who they're paying.</p>
+      </div>
 
       <div>
         <div className="mb-1.5 hidden grid-cols-[1fr_72px_112px_96px_32px] gap-2 text-xs font-medium text-slate-500 sm:grid">
@@ -237,7 +272,7 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LeadPicker({ value, onChange }: { value: number | ""; onChange: (id: number | "") => void }) {
+function LeadPicker({ value, onChange }: { value: number | ""; onChange: (id: number | "", lead?: LeadOption) => void }) {
   const [q, setQ] = useState("");
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -271,7 +306,10 @@ function LeadPicker({ value, onChange }: { value: number | ""; onChange: (id: nu
       </div>
       <div>
         <label className="label" htmlFor="inv-lead">Client *</label>
-        <select id="inv-lead" className="input" value={value} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")} required>
+        <select id="inv-lead" className="input" value={value} onChange={(e) => {
+            const id = e.target.value ? Number(e.target.value) : "";
+            onChange(id, leads.find((l) => l.id === id));
+          }} required>
           <option value="">{loading ? "Loading…" : "Select a lead"}</option>
           {leads.map((l) => (
             <option key={l.id} value={l.id}>
@@ -298,9 +336,15 @@ function InvoiceReady({ invoice, onDone }: { invoice: Created; onDone: () => voi
       <div className="flex items-start gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
         <p>
-          {formatMoney(invoice.amount, invoice.currency)} for {invoice.lead.name}. Send them this link to view and pay the invoice.
+          {formatMoney(invoice.amount, invoice.currency)} for {invoice.lead.name}, payable to {invoice.merchant_name}. Send them this link to view and pay the invoice.
         </p>
       </div>
+      {!invoice.card_payments ? (
+        <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Card payments aren't switched on yet, so this client can view the invoice but can't pay it by card.
+        </p>
+      ) : null}
       <div>
         <label className="label" htmlFor="pay-link">Payment link</label>
         <input id="pay-link" className="input font-mono text-xs" value={invoice.pay_url} readOnly onFocus={(e) => e.target.select()} />

@@ -19,7 +19,7 @@ class Invoice extends Model
     protected $guarded = ['id'];
 
     /** Only the finished link leaves the server */
-    protected $hidden = ['pay_token'];
+    protected $hidden = ['pay_token', 'stripe_intent_id'];
 
     protected $appends = ['pay_url', 'is_overdue'];
 
@@ -43,10 +43,28 @@ class Invoice extends Model
         });
     }
 
-    /** The page the client opens to view and pay this invoice */
+    /** The page the client opens to view and pay this invoice, on the brand's domain once connected */
     public function getPayUrlAttribute(): ?string
     {
-        return $this->pay_token ? url("/pay/{$this->pay_token}") : null;
+        if (! $this->pay_token) {
+            return null;
+        }
+        $host = $this->brand_id ? Brand::payHost($this->brand_id) : null;
+
+        return $host ? "https://{$host}/pay/{$this->pay_token}" : url("/pay/{$this->pay_token}");
+    }
+
+    /** Who the client is paying */
+    public function merchantName(): string
+    {
+        return $this->merchant_name ?: $this->brand->merchantName();
+    }
+
+    public function money(float|string|null $value): string
+    {
+        $symbol = ['USD' => '$', 'EUR' => '€', 'GBP' => '£'][$this->currency] ?? "{$this->currency} ";
+
+        return $symbol.number_format((float) $value, 2);
     }
 
     public function getIsOverdueAttribute(): bool

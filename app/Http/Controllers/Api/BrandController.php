@@ -12,6 +12,7 @@ use App\Models\Invoice;
 use App\Models\Lead;
 use App\Models\User;
 use App\Models\Website;
+use App\Services\StripePayments;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ use Illuminate\Validation\ValidationException;
 /** Brands & routing: brands, their websites/team counts and round-robin auto-assign */
 class BrandController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, StripePayments $stripe): JsonResponse
     {
         $user = $request->user();
         abort_unless($user->canAssignLeads(), 403);
@@ -45,7 +46,12 @@ class BrandController extends Controller
                 'waiting' => (int) ($waiting[$b->id] ?? 0),
                 'front_sales_reps' => (int) ($reps[$b->id] ?? 0),
                 'managers' => ($managers[$b->id] ?? collect())->map(fn ($m) => ['id' => $m->id, 'name' => $m->name])->values(),
+                'branding' => $b->branding(),
             ]),
+            'billing' => [
+                'card_payments' => $stripe->configured(),
+                'dns_target' => parse_url((string) config('app.url'), PHP_URL_HOST),
+            ],
             'manager_options' => $user->canAssignBrandManagers()
                 ? $this->managerOptions($user)->map->only(['id', 'name'])->values()
                 : [],

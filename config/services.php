@@ -31,8 +31,11 @@ return [
     // Card payments on invoice links. Leave the secret empty to show payment instructions only.
     'stripe' => [
         'secret' => env('STRIPE_SECRET_KEY'),
+        'publishable' => env('STRIPE_PUBLISHABLE_KEY'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
         'api_base' => env('STRIPE_API_BASE', 'https://api.stripe.com'),
+        // Stripe requires this to load from their own servers, never from a copy
+        'js_url' => env('STRIPE_JS_URL', 'https://js.stripe.com/endive/stripe.js'),
     ],
 
     'slack' => [

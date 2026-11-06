@@ -5,8 +5,9 @@ import type { SharedProps } from "@/types";
 import { formatNumber } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { AutoAssignToggle, BrandManagerSelect, CreateBrandButton, DeleteBrandButton } from "./partials/brand-controls";
+import { BrandingButton } from "./partials/branding-dialog";
 
-export default function BrandsIndex({ brands, manager_options: managerOptions }: BrandsData) {
+export default function BrandsIndex({ brands, manager_options: managerOptions, billing }: BrandsData) {
   const user = usePage<SharedProps>().props.auth.user!;
 
   return (
@@ -40,8 +41,9 @@ export default function BrandsIndex({ brands, manager_options: managerOptions }:
                   <th>Manager</th>
                   <th className="text-right">Websites</th>
                   <th className="text-right">Team</th>
-                  <th className="text-right">Waiting to be assigned</th>
-                  <th>Auto-assign (round-robin)</th>
+                  <th className="text-right" title="New leads waiting to be assigned">Waiting</th>
+                  <th title="Rotates new leads round-robin across Front Sales reps">Auto-assign</th>
+                  <th>Invoice branding</th>
                   {user.can.manage_brands ? <th className="text-right">Actions</th> : null}
                 </tr>
               </thead>
@@ -52,8 +54,8 @@ export default function BrandsIndex({ brands, manager_options: managerOptions }:
                   return (
                     <tr key={b.id}>
                       <td>
-                        <p className="font-medium text-slate-900">{b.name}</p>
-                        <p className="font-mono text-xs text-slate-500">{b.slug}</p>
+                        <p className="whitespace-nowrap font-medium text-slate-900">{b.name}</p>
+                        <p className="whitespace-nowrap font-mono text-xs text-slate-500">{b.slug}</p>
                       </td>
                       <td>
                         {user.can.assign_brand_managers ? (
@@ -86,6 +88,9 @@ export default function BrandsIndex({ brands, manager_options: managerOptions }:
                             {reps} active Front Sales rep{reps === 1 ? "" : "s"}
                           </span>
                         </div>
+                      </td>
+                      <td>
+                        <BrandingButton brandId={b.id} brandName={b.name} branding={b.branding} billing={billing} canEditDomain={user.can.assign_brand_managers} />
                       </td>
                       {user.can.manage_brands ? (
                         <td className="text-right">

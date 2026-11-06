@@ -35,9 +35,12 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
 - **Roles.** Super Admin, Admin, Brand Manager, Chat Agent, Front Sales, Up Sales, Finance, Developer. Each user is
   scoped to their brands, and sales reps only see their own leads. An Admin or Super Admin appoints one Brand Manager
   per brand, who runs its leads, chats, websites and invoices and sees its team (read-only).
-- **Invoices.** Line items, discount, tax and a due date. Every invoice has a private link where the client can see
-  it, download the PDF and pay by card through Stripe Checkout, or read your payment instructions. Part payments,
-  paid and cancelled invoices are tracked on the Finance page and the lead's timeline.
+- **Invoices.** Line items, discount, tax, a due date and a merchant name that tells the client who they're paying.
+  Every invoice has a private link where the client can see it, download the PDF and pay by card on the page, or read
+  your payment instructions. Part payments, paid and cancelled invoices are tracked on the Finance page and the lead's
+  timeline.
+- **Brand-themed invoices.** Each brand sets its logo, colour, merchant name and contact details under Brands &
+  routing, and its invoice pages and PDFs follow them. A brand can also connect its own domain for invoice links.
 - **Sales analytics.** Invoiced, collected and outstanding totals, a trend chart, and breakdowns by brand, rep, channel
   and campaign. Filter by date, brand, website, rep, channel and status, and export the result as CSV.
 
@@ -115,8 +118,8 @@ with a token from `POST /api/auth/login` (`Authorization: Bearer …`). Errors a
 |---|---|
 | `POST /api/intake/{key}` | Lead from a website: JSON, form-encoded, multipart or `text/plain` JSON. Rate-limited 20 / 10 min per key and IP. |
 | `POST /api/webhooks/tawk` | Tawk.to webhook (HMAC-SHA1 signed, retries de-duplicated by `X-Hook-Event-Id`). |
-| `POST /api/webhooks/stripe` | Stripe payment events (signature checked, each checkout recorded once). |
-| `GET /pay/{token}` · `POST /pay/{token}/checkout` · `GET /pay/{token}/pdf` | The client's invoice page, card checkout and PDF. Rate-limited 60 / min per IP. |
+| `POST /api/webhooks/stripe` | Stripe payment events (signature checked, each payment recorded once). |
+| `GET /pay/{token}` · `POST /pay/{token}/intent` · `GET /pay/{token}/pdf` | The client's invoice page, the payment its card form confirms, and the PDF. Rate-limited 60 / min per IP. |
 | `POST /api/auth/login` | `{email, password}` → `{token, user}` |
 
 | Signed in | |
@@ -126,8 +129,8 @@ with a token from `POST /api/auth/login` (`Authorization: Bearer …`). Errors a
 | `POST /api/leads/bulk` · `GET /api/leads/export` | Bulk assign/status (≤ 500); streaming CSV |
 | `GET /api/chats` · `POST /api/chats/{id}/messages` · `POST /api/chats/{id}/end` · `POST /api/chats/{id}/convert` · `POST /api/chats/{id}/transfer` · `POST /api/chats/delete` | Inbox, reply, end, convert to a lead, send to a Front Sales rep (`{to_id, note, convert}`), delete |
 | `GET/POST /api/websites` · `GET/PATCH /api/websites/{id}` | Websites, snippets, delivery log |
-| `GET/POST /api/admin/users` · `PATCH /api/admin/users/{id}` · `GET/POST/PATCH /api/admin/brands` · `PATCH /api/admin/brands/{id}/manager` | Team; brands and auto-assign; appoint a brand's manager |
-| `GET/POST /api/invoices` · `PATCH /api/invoices/{id}` · `POST /api/invoices/{id}/payments` · `GET /api/invoices/{id}/pdf` · `GET /api/finance` · `POST /api/finance/bulk-pdf` | Invoices (`items[]`, `discount`, `tax_rate`, `due_date`; status: sent / paid / cancelled), payments, PDFs, finance |
+| `GET/POST /api/admin/users` · `PATCH /api/admin/users/{id}` · `GET/POST/PATCH /api/admin/brands` · `PATCH /api/admin/brands/{id}/manager` · `PATCH /api/admin/brands/{id}/branding` · `POST/DELETE /api/admin/brands/{id}/logo` · `POST /api/admin/brands/{id}/domain-check` | Team; brands and auto-assign; appoint a brand's manager; invoice branding and domain |
+| `GET/POST /api/invoices` · `PATCH /api/invoices/{id}` · `POST /api/invoices/{id}/payments` · `GET /api/invoices/{id}/pdf` · `GET /api/finance` · `POST /api/finance/bulk-pdf` | Invoices (`items[]`, `merchant_name`, `discount`, `tax_rate`, `due_date`; status: sent / paid / cancelled), payments, PDFs, finance |
 | `GET /api/reports/sales` · `GET /api/reports/sales/export` | Sales analytics and CSV (filters `from to brand website rep channel status`) |
 
 ## Built for large lead volumes

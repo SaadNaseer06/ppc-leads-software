@@ -260,6 +260,16 @@ export type TeamData = {
   roles: { id: string; name: string }[];
 };
 
+export type BrandBranding = {
+  merchant_name: string | null;
+  brand_color: string | null;
+  billing_email: string | null;
+  billing_address: string | null;
+  pay_domain: string | null;
+  logo_url: string | null;
+  domain_connected: boolean;
+};
+
 export type BrandsData = {
   brands: {
     id: number;
@@ -271,9 +281,11 @@ export type BrandsData = {
     waiting: number;
     front_sales_reps: number;
     managers: Ref[];
+    branding: BrandBranding;
   }[];
   /** Brand Managers this user may appoint */
   manager_options: Ref[];
+  billing: { card_payments: boolean; dns_target: string };
 };
 
 export type InvoiceRow = {

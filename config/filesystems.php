@@ -30,6 +30,14 @@ return [
 
     'disks' => [
 
+        // Served as plain files: no storage link to set up on cPanel, and they work on brand domains
+        'brand_logos' => [
+            'driver' => 'local',
+            'root' => public_path('brand-logos'),
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),

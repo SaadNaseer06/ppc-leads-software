@@ -215,7 +215,7 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
                   </ul>
                 )}
                 {user.can.create_invoice ? (
-                  <CreateInvoiceButton compact lead={{ id: lead.id, name: lead.name, email: lead.email, company: lead.company }} />
+                  <CreateInvoiceButton compact lead={{ id: lead.id, name: lead.name, email: lead.email, company: lead.company , brand: lead.brand }} />
                 ) : null}
               </div>
             </section>

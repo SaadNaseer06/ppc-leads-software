@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\KeepBrandDomainsToPayPages;
 use App\Services\AssignmentException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -29,6 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['active' => EnsureUserIsActive::class]);
         $middleware->web(append: [HandleInertiaRequests::class]);
+        $middleware->append(KeepBrandDomainsToPayPages::class);
+        // The token in the link is the credential, and clients have no session on a brand's domain
+        $middleware->validateCsrfTokens(except: ['pay/*']);
         // The dashboard's own fetch() calls to /api/* authenticate with the session cookie (+ CSRF)
         $middleware->statefulApi();
         $middleware->redirectGuestsTo('/login');

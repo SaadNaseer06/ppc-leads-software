@@ -10,6 +10,7 @@ use App\Models\Lead;
 use App\Models\PaymentTransaction;
 use App\Services\InvoicePayments;
 use App\Services\InvoicePdf;
+use App\Services\StripePayments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -24,7 +25,7 @@ class InvoiceController extends Controller
 
     private const MAX_ZIP = 500;
 
-    public function __construct(private InvoicePdf $pdf, private InvoicePayments $payments) {}
+    public function __construct(private InvoicePdf $pdf, private InvoicePayments $payments, private StripePayments $stripe) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -58,6 +59,7 @@ class InvoiceController extends Controller
             'due_date' => ['nullable', 'date_format:Y-m-d', "after_or_equal:{$today}"],
             'currency' => ['sometimes', 'string', 'size:3'],
             'description' => ['nullable', 'string', 'max:5000'],
+            'merchant_name' => ['nullable', 'string', 'max:120'],
         ], [
             'items.required_without' => 'Add at least one item',
             'items.*.label.required' => 'Every item needs a description',
@@ -83,6 +85,7 @@ class InvoiceController extends Controller
             ...$priced,
             'lead_id' => $lead->id,
             'brand_id' => $lead->brand_id,
+            'merchant_name' => trim($data['merchant_name'] ?? '') ?: $lead->brand->merchantName(),
             'created_by_id' => $user->id,
             'currency' => strtoupper($data['currency'] ?? 'USD'),
             'description' => $data['description'] ?? null,
@@ -101,7 +104,9 @@ class InvoiceController extends Controller
             'number' => $invoice->number,
             'amount' => $invoice->amount,
             'currency' => $invoice->currency,
+            'merchant_name' => $invoice->merchant_name,
             'pay_url' => $invoice->pay_url,
+            'card_payments' => $this->stripe->configured(),
             'lead' => $lead->only(['name', 'email']),
         ], 201);
     }

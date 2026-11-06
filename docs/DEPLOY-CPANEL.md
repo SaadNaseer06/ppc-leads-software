@@ -93,6 +93,7 @@ VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
 
 # Client invoice payments (see "Take card payments" below)
 STRIPE_SECRET_KEY=
+STRIPE_PUBLISHABLE_KEY=
 STRIPE_WEBHOOK_SECRET=
 PAYMENT_INSTRUCTIONS="Bank transfer: Your Bank\nIBAN: XX00 0000 0000"
 ```
@@ -138,12 +139,13 @@ abandoned chats then stay open and the log tables keep growing.
 
 ## Take card payments (optional)
 
-Every invoice has a link clients open to view and pay it. Without Stripe keys the page still works and shows
-`PAYMENT_INSTRUCTIONS` instead of a card button. Check first that Stripe supports your business's country.
+Every invoice has a link clients open to view and pay it. The card form appears on that page once both Stripe keys are
+set. Until then, the page shows `PAYMENT_INSTRUCTIONS` instead. Check first that Stripe supports your business's country.
 
-1. In the [Stripe dashboard](https://dashboard.stripe.com/apikeys), copy the **Secret key** into `STRIPE_SECRET_KEY`.
+1. In the [Stripe dashboard](https://dashboard.stripe.com/apikeys), copy the **Publishable key** into
+   `STRIPE_PUBLISHABLE_KEY` and the **Secret key** into `STRIPE_SECRET_KEY`.
 2. *Developers → Webhooks → Add endpoint*, with the URL `https://leads.yourcompany.com/api/webhooks/stripe`.
-3. Select the events `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
+3. Select the event `payment_intent.succeeded`.
 4. Copy the endpoint's **Signing secret** (`whsec_…`) into `STRIPE_WEBHOOK_SECRET`.
 5. Run `php artisan optimize`, because the app reads `.env` from its cached config.
 6. Use test keys first: raise a small invoice, open its link and pay with the card `4242 4242 4242 4242`. The invoice
@@ -151,6 +153,25 @@ Every invoice has a link clients open to view and pay it. Without Stripe keys th
    the webhook again in live mode, since it has its own signing secret.
 
 The webhook records a payment even if the client closes the browser before returning to the invoice page.
+
+The name on a client's **card statement** comes from your Stripe account, not the invoice's merchant name. Set it under
+*Settings → Public details* in Stripe. All brands share the one Stripe account, so the money lands in that account.
+
+## Connect a brand's own domain (optional)
+
+Invoice links can use a brand's address, such as `pay.yourbrand.com`, instead of this app's. Links stay on the app's
+address until the domain is proven to work, so doing this never breaks a link a client already has.
+
+1. **Brands & routing** → *Customize* on the brand → enter the domain under **Invoice domain** and save.
+2. At the domain's DNS provider, add a `CNAME` record for it pointing to this app's domain.
+3. In cPanel, *Domains → Create A New Domain*: add it with the **same document root** as this app, then let *SSL/TLS
+   Status* issue its certificate. HTTPS is required, because card payments won't run without it.
+4. Back in **Customize**, press **Check connection**. Once it says *Connected*, every link for that brand uses the domain,
+   including links shown for existing invoices.
+
+A brand's domain only serves its own invoices. The dashboard, sign-in page and other brands' invoices return 404 there.
+Leave `SESSION_DOMAIN` empty. To use Apple Pay or Google Pay on a brand's domain, also register it in Stripe under
+*Settings → Payment method domains*.
 
 ## Updating (CI/CD)
 
