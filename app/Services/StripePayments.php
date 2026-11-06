@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use Dotenv\Dotenv;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 /**
  * Card payments through Stripe, called over plain HTTP so there is nothing to install on
@@ -20,9 +22,68 @@ class StripePayments
     /** A signed webhook older than this is rejected, so a captured request can't be replayed */
     private const SIGNATURE_TOLERANCE_SECONDS = 300;
 
+    /** Each setting and the .env line that fills it */
+    private const SETTINGS = [
+        'STRIPE_PUBLISHABLE_KEY' => 'services.stripe.publishable',
+        'STRIPE_SECRET_KEY' => 'services.stripe.secret',
+        'STRIPE_WEBHOOK_SECRET' => 'services.stripe.webhook_secret',
+    ];
+
     public function configured(): bool
     {
-        return config('services.stripe.secret') && config('services.stripe.publishable');
+        return $this->keyProblem() === null
+            && config('services.stripe.secret') && config('services.stripe.publishable');
+    }
+
+    /**
+     * Why card payments are on or off, for the people who can fix it. Names and yes/no only:
+     * key values never leave the server.
+     *
+     * @return array{card_payments: bool, mode: ?string, missing: list<string>, needs_reload: bool, problem: ?string, webhook: bool}
+     */
+    public function status(): array
+    {
+        $file = $this->envFile();
+        $unset = array_keys(array_filter(self::SETTINGS, fn ($key) => ! config($key)));
+
+        return [
+            'card_payments' => $this->configured(),
+            'mode' => str_contains((string) config('services.stripe.publishable'), '_live_') ? 'live' : (config('services.stripe.publishable') ? 'test' : null),
+            'missing' => array_values(array_filter($unset, fn ($name) => empty($file[$name]))),
+            // In .env, but not what the running app has: it is still on settings cached before the edit
+            'needs_reload' => collect(self::SETTINGS)->contains(fn ($key, $name) => ! empty($file[$name]) && $file[$name] !== config($key)),
+            'problem' => $this->keyProblem(),
+            'webhook' => (bool) config('services.stripe.webhook_secret'),
+        ];
+    }
+
+    /** A swapped or mixed pair would show a card form that can only fail */
+    private function keyProblem(): ?string
+    {
+        $publishable = (string) config('services.stripe.publishable');
+        $secret = (string) config('services.stripe.secret');
+
+        if ($publishable !== '' && ! str_starts_with($publishable, 'pk_')) {
+            return 'STRIPE_PUBLISHABLE_KEY should start with pk_. Check the two keys are not swapped.';
+        }
+        if ($secret !== '' && ! preg_match('/^(sk|rk)_/', $secret)) {
+            return 'STRIPE_SECRET_KEY should start with sk_. Check the two keys are not swapped.';
+        }
+        if ($publishable !== '' && $secret !== '' && str_contains($publishable, '_live_') !== str_contains($secret, '_live_')) {
+            return 'One Stripe key is a test key and the other is live. Both must be from the same mode.';
+        }
+
+        return null;
+    }
+
+    /** @return array<string, string|null> */
+    private function envFile(): array
+    {
+        try {
+            return Dotenv::parse((string) @file_get_contents(app()->environmentFilePath()));
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     public static function unitsPerMajor(string $currency): int
@@ -61,12 +122,26 @@ class StripePayments
             'amount' => $amount,
             'currency' => strtolower($invoice->currency),
             'description' => "Invoice {$invoice->number} · {$merchant}",
-            'receipt_email' => $invoice->lead?->email,
+            'receipt_email' => $invoice->client_email,
             'metadata' => ['invoice_id' => $invoice->id, 'invoice_number' => $invoice->number, 'merchant' => $merchant],
         ]))->throw()->json();
         $invoice->update(['stripe_intent_id' => $created['id']]);
 
         return $created;
+    }
+
+    /** After deleting or cancelling, a tab left open must not still be able to charge the client */
+    public function cancelOpenIntent(Invoice $invoice): void
+    {
+        if (! $invoice->stripe_intent_id || ! $this->configured()) {
+            return;
+        }
+        rescue(function () use ($invoice) {
+            $intent = $this->intent($invoice->stripe_intent_id);
+            if ($intent && in_array($intent['status'], self::OPEN_STATUSES, true)) {
+                $this->client()->asForm()->post('/v1/payment_intents/'.rawurlencode($intent['id']).'/cancel')->throw();
+            }
+        });
     }
 
     /** @return array<string, mixed>|null */

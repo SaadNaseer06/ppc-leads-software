@@ -12,6 +12,7 @@ export type Permission =
   | "view_invoices"
   | "create_invoice"
   | "manage_invoices"
+  | "delete_invoices"
   | "view_finance"
   | "view_reports"
   | "manage_websites"

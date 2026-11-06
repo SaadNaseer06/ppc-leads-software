@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BillingController;
 use App\Http\Controllers\Api\BrandBrandingController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\ChatController;
@@ -85,6 +86,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/invoices', [InvoiceController::class, 'index']);
     Route::post('/invoices', [InvoiceController::class, 'store']);
     Route::patch('/invoices/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
+    Route::delete('/invoices/{id}', [InvoiceController::class, 'destroy'])->whereNumber('id');
+    Route::post('/billing/reload-settings', [BillingController::class, 'reloadSettings']);
     Route::post('/invoices/{id}/payments', [InvoiceController::class, 'storePayment'])->whereNumber('id');
     Route::get('/invoices/{id}/pdf', [InvoiceController::class, 'pdf'])->whereNumber('id');
     Route::get('/finance', [InvoiceController::class, 'finance']);

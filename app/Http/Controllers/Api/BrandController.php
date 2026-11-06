@@ -164,7 +164,8 @@ class BrandController extends Controller
             }
         };
         // Invoices block lead deletes (restrictOnDelete); their payments cascade
-        $inBatches(Invoice::where('brand_id', $brand->id));
+        // Through the table so deleted invoices go too: the brand can't be removed while any row remains
+        $inBatches(DB::table('invoices')->where('brand_id', $brand->id));
         // Chat messages cascade with their conversation
         $inBatches(Conversation::where('brand_id', $brand->id));
         // Lead activities cascade

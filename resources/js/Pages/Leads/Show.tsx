@@ -215,7 +215,7 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
                   </ul>
                 )}
                 {user.can.create_invoice ? (
-                  <CreateInvoiceButton compact lead={{ id: lead.id, name: lead.name, email: lead.email, company: lead.company , brand: lead.brand }} />
+                  <CreateInvoiceButton compact lead={{ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, company: lead.company, brand: lead.brand }} />
                 ) : null}
               </div>
             </section>
@@ -341,6 +341,12 @@ function ActivityLine({ activity }: { activity: LeadActivity }) {
       );
     case "updated":
       return <p className="text-sm text-slate-600">{strong(who)} updated the contact details</p>;
+    case "invoice_deleted":
+      return (
+        <p className="text-sm text-slate-600">
+          {strong(who)} deleted invoice {strong(String(d.number))}
+        </p>
+      );
     case "invoice":
       return (
         <p className="text-sm text-slate-600">

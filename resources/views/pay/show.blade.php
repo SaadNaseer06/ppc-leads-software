@@ -3,6 +3,7 @@
 @php
     $brand = $invoice->brand;
     $merchant = $invoice->merchantName();
+    $client = $invoice->clientName();
     $money = fn ($value) => $invoice->money($value);
     $quantity = fn ($value) => rtrim(rtrim(number_format($value, 2), '0'), '.');
     $issued = $invoice->created_at->timezone(config('ppc.report_timezone'))->format('M j, Y');
@@ -16,8 +17,7 @@
         'accent' => $theme['accent'],
         'intentUrl' => "/pay/{$invoice->pay_token}/intent",
         'returnPath' => "/pay/{$invoice->pay_token}/return",
-        'name' => $invoice->lead->name,
-        'email' => $invoice->lead->email,
+        'billing' => array_filter(['name' => $client, 'email' => $invoice->client_email]),
     ];
     [$pillClass, $pillText] = match (true) {
         $settled => ['paid', 'Paid'],
@@ -39,61 +39,71 @@
 @endsection
 
 @section('content')
-    <header class="band">
-        <div class="band-in">
-            <div class="who">
-                @if($brand->logoUrl())
-                    <span class="logo"><img src="{{ $brand->logoUrl() }}" alt=""></span>
-                @endif
-                <div>
-                    <div class="merchant">{{ $merchant }}</div>
-                    <div class="sub">Invoice {{ $invoice->number }}</div>
-                </div>
-            </div>
-            <div class="due">
-                <div class="sub">{{ $settled ? 'Paid in full' : ($cancelled ? 'Cancelled' : 'Amount due') }}</div>
-                <div class="due-amount">{{ $money($payable ? $balance : $invoice->amount) }}</div>
-                @if($payable && $invoice->due_date)
-                    <div class="sub">{{ $invoice->is_overdue ? 'Was due' : 'Due' }} {{ $invoice->due_date->format('M j, Y') }}</div>
-                @endif
-                @if($cardForm)
-                    <a class="jump" href="#pay">Pay now</a>
-                @endif
-            </div>
+    <div class="strip">
+        <div class="strip-in">
+            {{-- With no logo, the document's heading already says this --}}
+            <span class="strip-name">{{ $brand->logoUrl() ? $merchant : '' }}</span>
+            <span class="strip-safe">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                Secure invoice
+            </span>
         </div>
-    </header>
+    </div>
 
     <main class="shell">
-        <article class="card">
-            <div class="sheet-head">
-                <h1>Invoice {{ $invoice->number }}</h1>
-                <span class="pill {{ $pillClass }}">{{ $pillText }}</span>
+        <article class="paper">
+            <header class="head">
+                <div>
+                    @if($brand->logoUrl())
+                        <img class="head-logo" src="{{ $brand->logoUrl() }}" alt="{{ $merchant }}">
+                    @else
+                        <div class="head-name">{{ $merchant }}</div>
+                    @endif
+                </div>
+                <div class="head-right">
+                    <div class="head-title">INVOICE</div>
+                    <div class="head-number">{{ $invoice->number }}</div>
+                    <span class="pill {{ $pillClass }}">{{ $pillText }}</span>
+                </div>
+            </header>
+
+            <div class="facts">
+                <div class="fact">
+                    <div class="label">Issued</div>
+                    <div class="fact-value">{{ $issued }}</div>
+                </div>
+                <div class="fact">
+                    <div class="label">Due</div>
+                    <div @class(['fact-value', 'late' => $invoice->is_overdue])>{{ $invoice->due_date?->format('M j, Y') ?? 'On receipt' }}</div>
+                </div>
+                <div class="fact">
+                    <div class="label">{{ $settled ? 'Paid' : 'Amount due' }}</div>
+                    <div class="fact-value">{{ $money($settled ? $invoice->amount : ($cancelled ? 0 : $balance)) }}</div>
+                </div>
             </div>
 
-            <div class="section parties">
+            @if($cardForm)
+                <a class="jump" href="#pay">Pay {{ $money($balance) }}</a>
+            @endif
+
+            <div class="parties">
+                <div>
+                    <div class="label">Billed to</div>
+                    <div class="strong">{{ $client }}</div>
+                    @if($invoice->client_company)<div class="muted small">{{ $invoice->client_company }}</div>@endif
+                    @if($invoice->client_address)<div class="muted small pre">{{ $invoice->client_address }}</div>@endif
+                    @if($invoice->client_email)<div class="muted small">{{ $invoice->client_email }}</div>@endif
+                    @if($invoice->client_phone)<div class="muted small">{{ $invoice->client_phone }}</div>@endif
+                </div>
                 <div>
                     <div class="label">From</div>
                     <div class="strong">{{ $merchant }}</div>
                     @if($brand->billing_address)<div class="muted small pre">{{ $brand->billing_address }}</div>@endif
                     @if($brand->billing_email)<div class="small"><a href="mailto:{{ $brand->billing_email }}">{{ $brand->billing_email }}</a></div>@endif
                 </div>
-                <div>
-                    <div class="label">Bill to</div>
-                    <div class="strong">{{ $invoice->lead->name }}</div>
-                    @if($invoice->lead->company)<div class="muted small">{{ $invoice->lead->company }}</div>@endif
-                    @if($invoice->lead->email)<div class="muted small">{{ $invoice->lead->email }}</div>@endif
-                </div>
-                <div>
-                    <div class="label">Issued</div>
-                    <div>{{ $issued }}</div>
-                    @if($invoice->due_date)
-                        <div class="label" style="margin-top: 10px">Due</div>
-                        <div>{{ $invoice->due_date->format('M j, Y') }}</div>
-                    @endif
-                </div>
             </div>
 
-            <div class="section">
+            <div class="lines">
                 <table>
                     <thead>
                         <tr>
@@ -130,23 +140,30 @@
                     @if((float) $invoice->tax_amount > 0)
                         <div><span class="muted">Tax ({{ rtrim(rtrim($invoice->tax_rate, '0'), '.') }}%)</span><span>{{ $money($invoice->tax_amount) }}</span></div>
                     @endif
-                    <div class="grand"><span>Total</span><span>{{ $money($invoice->amount) }}</span></div>
+                    <div class="sum"><span>Total</span><span>{{ $money($invoice->amount) }}</span></div>
                     @if($paid > 0)
-                        <div><span class="muted">Paid</span><span>{{ $money($paid) }}</span></div>
-                        <div class="grand"><span>Balance due</span><span>{{ $money($balance) }}</span></div>
+                        <div><span class="muted">Paid</span><span>-{{ $money($paid) }}</span></div>
                     @endif
                 </div>
+                @unless($cancelled)
+                    <div class="owed"><span>Balance due</span><strong>{{ $money($settled ? 0 : $balance) }}</strong></div>
+                @endunless
             </div>
 
             @if($invoice->description)
-                <div class="section">
+                <div class="note">
                     <div class="label">Notes</div>
                     <div class="pre">{{ $invoice->description }}</div>
                 </div>
             @endif
+
+            <footer class="paper-foot">
+                <span>Thank you for your business.</span>
+                @if($brand->billing_email)<span>Questions? <a href="mailto:{{ $brand->billing_email }}">{{ $brand->billing_email }}</a></span>@endif
+            </footer>
         </article>
 
-        <aside class="card panel" id="pay">
+        <aside class="paper panel" id="pay">
             @if($settled)
                 <div class="state">
                     <span class="state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></span>
@@ -166,11 +183,15 @@
                     <div class="notice info">Your payment is being processed. This invoice will update once it's confirmed.</div>
                 @endif
 
+                <div class="label">Amount due</div>
+                <div class="panel-amount">{{ $money($balance) }}</div>
+                <p class="paying">To <strong>{{ $merchant }}</strong></p>
+                <hr class="rule">
+
                 @if($cardForm)
-                    <h2>Pay by card</h2>
-                    <p class="paying">You're paying <strong>{{ $merchant }}</strong></p>
                     <form id="pay-form">
-                        <div id="card-element"><div class="loading" id="card-loading">Loading secure card form…</div></div>
+                        <div class="loading" id="card-loading">Loading secure card form…</div>
+                        <div id="card-element"></div>
                         <div class="notice error" id="pay-error" role="alert" style="margin: 14px 0 0" hidden></div>
                         <button class="btn" id="pay-button" type="submit">Pay {{ $money($balance) }}</button>
                     </form>
@@ -183,27 +204,23 @@
                 @if($instructions)
                     <div @class(['or' => $cardForm])>
                         <div class="label">{{ $cardForm ? 'Or pay by' : 'How to pay' }}</div>
-                        <div class="pre">{{ $instructions }}</div>
+                        <div class="pre small">{{ $instructions }}</div>
                     </div>
                 @elseif(! $cardForm)
-                    <h2>How to pay</h2>
-                    <p class="paying" style="margin-bottom: 0">
+                    <div class="label">How to pay</div>
+                    <div class="small">
                         Please contact {{ $merchant }} to arrange payment.
                         @if($brand->billing_email)
                             <br><a href="mailto:{{ $brand->billing_email }}">{{ $brand->billing_email }}</a>
                         @endif
-                    </p>
+                    </div>
                 @endif
             @endif
 
             <a class="ghost" href="/pay/{{ $invoice->pay_token }}/pdf">{{ $settled ? 'Download receipt' : 'Download PDF' }}</a>
         </aside>
     </main>
-
-    <footer class="foot">
-        <span>{{ $merchant }}</span>
-        @if($brand->billing_email)<a href="mailto:{{ $brand->billing_email }}">{{ $brand->billing_email }}</a>@endif
-    </footer>
+    <div class="below"></div>
 
     @if($cardForm)
         <script>
@@ -221,36 +238,40 @@
                     button.disabled = false;
                     button.textContent = buttonText;
                 };
-
-                if (!window.Stripe) {
+                const formFailed = () => {
                     loading.hidden = true;
                     button.hidden = true;
                     showError("The card form couldn't load. Please refresh the page, or turn off any content blocker for this site.");
-                    return;
-                }
+                };
 
-                const stripe = Stripe(pay.key);
-                const elements = stripe.elements({
-                    mode: 'payment',
-                    amount: pay.amount,
-                    currency: pay.currency,
-                    allowedPaymentMethodTypes: ['card'],
-                    appearance: {
-                        theme: 'stripe',
-                        variables: {
-                            colorPrimary: pay.accent,
-                            colorText: '#0f172a',
-                            borderRadius: '10px',
-                            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
+                if (!window.Stripe) return formFailed();
+
+                let stripe, elements;
+                try {
+                    stripe = Stripe(pay.key);
+                    elements = stripe.elements({
+                        mode: 'payment',
+                        amount: pay.amount,
+                        currency: pay.currency,
+                        allowedPaymentMethodTypes: ['card'],
+                        appearance: {
+                            theme: 'stripe',
+                            variables: {
+                                colorPrimary: pay.accent,
+                                colorText: '#0f172a',
+                                borderRadius: '10px',
+                                fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
+                            },
                         },
-                    },
-                });
-                const card = elements.create('payment', {
-                    layout: 'tabs',
-                    defaultValues: { billingDetails: { name: pay.name, email: pay.email || '' } },
-                });
-                card.on('ready', () => { loading.hidden = true; });
-                card.mount('#card-element');
+                    });
+                    const card = elements.create('payment', { layout: 'tabs', defaultValues: { billingDetails: pay.billing } });
+                    card.on('ready', () => { loading.hidden = true; });
+                    card.on('loaderror', formFailed);
+                    card.mount('#card-element');
+                } catch (problem) {
+                    console.error(problem);
+                    return formFailed();
+                }
 
                 form.addEventListener('submit', async (event) => {
                     event.preventDefault();

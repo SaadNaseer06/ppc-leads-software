@@ -180,8 +180,8 @@ export default function Reports(report: SalesReportData) {
               title="By channel"
               first="Channel"
               rows={report.by_channel}
-              name={(r) => labelFor(CHANNEL_LABELS, r.name)}
-              href={(r) => `/reports?${query({ channel: String(r.id) })}`}
+              name={(r) => (r.name ? labelFor(CHANNEL_LABELS, r.name) : "Direct (no lead)")}
+              href={(r) => (r.id ? `/reports?${query({ channel: String(r.id) })}` : undefined)}
             />
             <Breakdown title="Top campaigns" first="Campaign" rows={report.by_campaign} emptyHint="No invoices came from a tagged campaign in this view." />
           </div>
@@ -250,7 +250,7 @@ function Breakdown({
   title: string;
   first: string;
   rows: SalesBreakdownRow[];
-  href?: (row: SalesBreakdownRow) => string;
+  href?: (row: SalesBreakdownRow) => string | undefined;
   name?: (row: SalesBreakdownRow) => string;
   hideWhen?: boolean;
   emptyHint?: string;
@@ -277,11 +277,12 @@ function Breakdown({
             <tbody>
               {rows.map((r) => {
                 const label = name ? name(r) : r.name;
+                const link = href?.(r);
                 return (
-                  <tr key={r.id}>
+                  <tr key={r.id ?? "none"}>
                     <td className="max-w-[220px] truncate" title={label}>
-                      {href ? (
-                        <Link href={href(r)} preserveScroll className="font-medium text-teal-700 hover:underline">
+                      {link ? (
+                        <Link href={link} preserveScroll className="font-medium text-teal-700 hover:underline">
                           {label}
                         </Link>
                       ) : (

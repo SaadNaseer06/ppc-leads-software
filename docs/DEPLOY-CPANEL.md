@@ -147,12 +147,17 @@ set. Until then, the page shows `PAYMENT_INSTRUCTIONS` instead. Check first that
 2. *Developers → Webhooks → Add endpoint*, with the URL `https://leads.yourcompany.com/api/webhooks/stripe`.
 3. Select the event `payment_intent.succeeded`.
 4. Copy the endpoint's **Signing secret** (`whsec_…`) into `STRIPE_WEBHOOK_SECRET`.
-5. Run `php artisan optimize`, because the app reads `.env` from its cached config.
+5. Load the new settings: open **Invoices** as a Super Admin and press **Reload settings**, or run `php artisan optimize`.
+   The app keeps its settings cached, so changes to `.env` do nothing until then. Every deploy reloads them too.
 6. Use test keys first: raise a small invoice, open its link and pay with the card `4242 4242 4242 4242`. The invoice
    should turn **Paid** and the payment should appear on the **Finance** page. Then switch to the live keys, and add
    the webhook again in live mode, since it has its own signing secret.
 
 The webhook records a payment even if the client closes the browser before returning to the invoice page.
+
+**No card form on the invoice?** Open **Invoices** in the app: a notice at the top names the exact cause, such as a key
+missing from `.env`, settings that need reloading, or test and live keys mixed together. Both keys are needed: the
+publishable key (`pk_…`) shows the form, and the secret key (`sk_…`) takes the payment.
 
 The name on a client's **card statement** comes from your Stripe account, not the invoice's merchant name. Set it under
 *Settings → Public details* in Stripe. All brands share the one Stripe account, so the money lands in that account.

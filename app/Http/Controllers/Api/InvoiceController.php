@@ -8,9 +8,11 @@ use App\Models\Brand;
 use App\Models\Invoice;
 use App\Models\Lead;
 use App\Models\PaymentTransaction;
+use App\Models\User;
 use App\Services\InvoicePayments;
 use App\Services\InvoicePdf;
 use App\Services\StripePayments;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -38,6 +40,9 @@ class InvoiceController extends Controller
                 ->withSum('payments as paid_total', 'amount')
                 ->latest()->limit(self::LIMIT)->get(),
             'limit' => self::LIMIT,
+            // The brands this person can bill under, for invoices with no lead
+            'brands' => $user->canCreateInvoice() ? $this->billableBrands($user)->get(['id', 'name', 'merchant_name']) : [],
+            'billing' => $user->canManageInvoices() ? $this->stripe->status() : null,
         ]);
     }
 
@@ -47,7 +52,13 @@ class InvoiceController extends Controller
         abort_unless($user->canCreateInvoice(), 403);
         $today = now(config('ppc.report_timezone'))->toDateString();
         $data = $request->validate([
-            'lead_id' => ['required', 'integer'],
+            'lead_id' => ['nullable', 'integer'],
+            'brand_id' => ['nullable', 'integer'],
+            'client_name' => ['required_without:lead_id', 'nullable', 'string', 'max:191'],
+            'client_email' => ['nullable', 'email', 'max:191'],
+            'client_phone' => ['nullable', 'string', 'max:50'],
+            'client_company' => ['nullable', 'string', 'max:191'],
+            'client_address' => ['nullable', 'string', 'max:500'],
             'items' => ['required_without:amount', 'array', 'min:1', 'max:50'],
             'items.*.label' => ['required', 'string', 'max:191'],
             'items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:999999'],
@@ -61,6 +72,8 @@ class InvoiceController extends Controller
             'description' => ['nullable', 'string', 'max:5000'],
             'merchant_name' => ['nullable', 'string', 'max:120'],
         ], [
+            'client_name.required_without' => "Enter the client's name",
+            'client_email.email' => "That client email doesn't look right",
             'items.required_without' => 'Add at least one item',
             'items.*.label.required' => 'Every item needs a description',
             'items.*.quantity.gt' => 'Quantity must be greater than zero',
@@ -68,7 +81,11 @@ class InvoiceController extends Controller
             'due_date.after_or_equal' => "The due date can't be in the past",
         ]);
 
-        $lead = Lead::query()->visibleTo($user)->findOrFail($data['lead_id']);
+        $lead = isset($data['lead_id']) ? Lead::query()->visibleTo($user)->findOrFail($data['lead_id']) : null;
+        $brand = $lead?->brand ?? $this->brandToBill($user, $data['brand_id'] ?? null);
+        if (! $brand) {
+            return response()->json(['error' => 'Choose which brand this invoice is from'], 422);
+        }
         $items = $data['items'] ?? [['label' => ($data['description'] ?? null) ?: 'Services', 'quantity' => 1, 'unit_price' => $data['amount']]];
         $priced = Invoice::priced($items, (float) ($data['discount'] ?? 0), (float) ($data['tax_rate'] ?? 0));
         if ($priced['discount'] > $priced['subtotal']) {
@@ -83,16 +100,21 @@ class InvoiceController extends Controller
 
         $invoice = Invoice::createWithNumber([
             ...$priced,
-            'lead_id' => $lead->id,
-            'brand_id' => $lead->brand_id,
-            'merchant_name' => trim($data['merchant_name'] ?? '') ?: $lead->brand->merchantName(),
+            'lead_id' => $lead?->id,
+            'brand_id' => $brand->id,
+            'merchant_name' => trim($data['merchant_name'] ?? '') ?: $brand->merchantName(),
+            'client_name' => trim($data['client_name'] ?? '') ?: $lead?->name,
+            'client_email' => $data['client_email'] ?? $lead?->email,
+            'client_phone' => $data['client_phone'] ?? $lead?->phone,
+            'client_company' => $data['client_company'] ?? $lead?->company,
+            'client_address' => $data['client_address'] ?? null,
             'created_by_id' => $user->id,
             'currency' => strtoupper($data['currency'] ?? 'USD'),
             'description' => $data['description'] ?? null,
             'due_date' => $data['due_date'] ?? null,
             'status' => 'sent',
         ]);
-        $lead->activities()->create([
+        $lead?->activities()->create([
             'actor_id' => $user->id,
             'type' => 'invoice',
             'data' => ['number' => $invoice->number, 'amount' => (float) $invoice->amount, 'currency' => $invoice->currency],
@@ -107,8 +129,61 @@ class InvoiceController extends Controller
             'merchant_name' => $invoice->merchant_name,
             'pay_url' => $invoice->pay_url,
             'card_payments' => $this->stripe->configured(),
-            'lead' => $lead->only(['name', 'email']),
+            'client' => ['name' => $invoice->client_name, 'email' => $invoice->client_email],
         ], 201);
+    }
+
+    /**
+     * Hides the invoice everywhere and kills its link. Money already recorded goes with it, so
+     * that takes an explicit force. The row stays, so the number is never issued twice.
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canDeleteInvoices(), 403);
+        $invoice = Invoice::query()->visibleTo($user)->with('lead')->withSum('payments as paid_total', 'amount')->findOrFail($id);
+
+        $paid = $invoice->paidTotal();
+        if ($paid > 0 && ! $request->boolean('force')) {
+            return response()->json([
+                'error' => "{$invoice->number} has payments recorded. Confirm to delete it and remove them from your totals.",
+                'requires_force' => true,
+                'paid' => $paid,
+            ], 422);
+        }
+
+        $this->stripe->cancelOpenIntent($invoice);
+        $invoice->delete();
+        $invoice->lead?->activities()->create([
+            'actor_id' => $user->id,
+            'type' => 'invoice_deleted',
+            'data' => ['number' => $invoice->number, 'amount' => (float) $invoice->amount, 'currency' => $invoice->currency],
+        ]);
+        ActivityLog::record($user->id, 'invoice.delete', 'Invoice', $invoice->id, [
+            'number' => $invoice->number,
+            'amount' => $invoice->amount,
+            'paid' => $paid,
+            'client' => $invoice->client_name,
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Everyone with brands assigned bills under those; global roles can use any */
+    private function billableBrands(User $user): Builder
+    {
+        return Brand::query()->when(! $user->hasGlobalAccess(), fn ($q) => $q->whereIn('id', $user->brandIds()))->orderBy('name');
+    }
+
+    /** The chosen brand, or the only one they have. Null when a choice is needed. */
+    private function brandToBill(User $user, ?int $brandId): ?Brand
+    {
+        if ($brandId) {
+            return $this->billableBrands($user)->find($brandId) ?? abort(403, "You can't invoice for that brand.");
+        }
+        $brands = $this->billableBrands($user)->limit(2)->get();
+
+        return $brands->count() === 1 ? $brands->first() : null;
     }
 
     /** Mark an invoice paid, cancelled, or back to sent */
@@ -131,6 +206,9 @@ class InvoiceController extends Controller
                 }
                 $invoice->update(['status' => $status]);
             });
+            if ($status === 'cancelled') {
+                $this->stripe->cancelOpenIntent($invoice);
+            }
             ActivityLog::record($user->id, 'invoice.status', 'Invoice', $invoice->id, ['from' => $from, 'to' => $status]);
         }
 
@@ -191,11 +269,13 @@ class InvoiceController extends Controller
         abort_unless($request->user()->canViewFinance(), 403);
 
         return response()->json([
-            'transactions' => PaymentTransaction::with(['invoice:id,number,currency,brand_id,lead_id', 'invoice.brand:id,name', 'invoice.lead:id,name'])
+            'transactions' => PaymentTransaction::with(['invoice:id,number,currency,brand_id,lead_id,client_name', 'invoice.brand:id,name', 'invoice.lead:id,name'])
+                // A deleted invoice takes its payments out of the books with it
+                ->whereHas('invoice')
                 ->latest('recorded_at')->limit(self::LIMIT)->get(),
             'invoices' => Invoice::with(['brand:id,name', 'lead:id,name'])->withSum('payments as paid_total', 'amount')
                 ->latest()->limit(self::LIMIT)
-                ->get(['id', 'number', 'amount', 'currency', 'status', 'due_date', 'pay_token', 'brand_id', 'lead_id', 'created_at']),
+                ->get(['id', 'number', 'amount', 'currency', 'status', 'due_date', 'pay_token', 'brand_id', 'lead_id', 'client_name', 'client_email', 'created_at']),
             'limit' => self::LIMIT,
         ]);
     }
@@ -243,7 +323,7 @@ class InvoiceController extends Controller
             ->select('brand_id', DB::raw('COUNT(*) AS n'), DB::raw('SUM(amount) AS total'))->get()->keyBy('brand_id');
         // Money actually received (partial payments included)
         $paid = PaymentTransaction::join('invoices', 'invoices.id', '=', 'payment_transactions.invoice_id')
-            ->whereIn('invoices.brand_id', $ids)->where('invoices.status', '!=', 'cancelled')
+            ->whereIn('invoices.brand_id', $ids)->where('invoices.status', '!=', 'cancelled')->whereNull('invoices.deleted_at')
             ->groupBy('invoices.brand_id')
             ->selectRaw('invoices.brand_id, SUM(payment_transactions.amount) AS total')->pluck('total', 'brand_id');
         // Still to collect: unpaid invoices minus their part payments

@@ -1,16 +1,12 @@
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Head, Link } from "@inertiajs/react";
 import { FileText, Wallet } from "lucide-react";
 import type { FinanceData } from "@/lib/api-types";
-import type { SharedProps } from "@/types";
 import { formatCalendarDay, formatDate, formatMoney } from "@/lib/format";
-import { CopyButton } from "@/components/ui/copy-button";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { BulkDownloadButton } from "./partials/bulk-download-button";
 import { InvoiceActions, InvoiceStatusBadge, PAYMENT_METHODS, balanceDue } from "../Invoices/partials/invoice-actions";
 
 export default function FinanceIndex({ transactions, invoices, limit: LIMIT }: FinanceData) {
-  const user = usePage<SharedProps>().props.auth.user!;
-
   return (
     <div className="space-y-5">
       <Head title="Finance" />
@@ -32,7 +28,7 @@ export default function FinanceIndex({ transactions, invoices, limit: LIMIT }: F
               <thead>
                 <tr>
                   <th>Number</th>
-                  <th>Lead</th>
+                  <th>Client</th>
                   <th>Brand</th>
                   <th className="text-right">Amount</th>
                   <th className="text-right">Balance due</th>
@@ -46,9 +42,13 @@ export default function FinanceIndex({ transactions, invoices, limit: LIMIT }: F
                   <tr key={inv.id}>
                     <td className="whitespace-nowrap font-medium text-slate-900">{inv.number}</td>
                     <td className="max-w-[220px] truncate">
-                      <Link href={`/leads/${inv.lead.id}`} className="text-teal-700 hover:underline" title={inv.lead.name}>
-                        {inv.lead.name}
-                      </Link>
+                      {inv.lead ? (
+                        <Link href={`/leads/${inv.lead.id}`} className="text-teal-700 hover:underline" title={inv.client_name ?? inv.lead.name}>
+                          {inv.client_name ?? inv.lead.name}
+                        </Link>
+                      ) : (
+                        <span title={inv.client_name ?? undefined}>{inv.client_name}</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap">{inv.brand.name}</td>
                     <td className="text-right tabular-nums">{formatMoney(inv.amount, inv.currency)}</td>
@@ -63,13 +63,7 @@ export default function FinanceIndex({ transactions, invoices, limit: LIMIT }: F
                       {inv.due_date ? <span className="block text-xs text-slate-500">Due {formatCalendarDay(inv.due_date)}</span> : null}
                     </td>
                     <td className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {user.can.manage_invoices ? <InvoiceActions invoice={inv} /> : null}
-                        {inv.pay_url && inv.status !== "cancelled" ? <CopyButton value={inv.pay_url} label="Copy link" /> : null}
-                        <a className="btn-ghost btn-sm" href={`/api/invoices/${inv.id}/pdf`} title="Download PDF">
-                          PDF
-                        </a>
-                      </div>
+                      <InvoiceActions invoice={inv} />
                     </td>
                   </tr>
                 ))}
@@ -97,7 +91,7 @@ export default function FinanceIndex({ transactions, invoices, limit: LIMIT }: F
                   <th>Date</th>
                   <th>Invoice</th>
                   <th>Brand</th>
-                  <th>Lead</th>
+                  <th>Client</th>
                   <th className="text-right">Amount</th>
                   <th>Method</th>
                   <th>Reference</th>
@@ -109,7 +103,7 @@ export default function FinanceIndex({ transactions, invoices, limit: LIMIT }: F
                     <td className="whitespace-nowrap">{formatDate(tx.recorded_at)}</td>
                     <td className="font-medium text-slate-900">{tx.invoice.number}</td>
                     <td>{tx.invoice.brand.name}</td>
-                    <td>{tx.invoice.lead.name}</td>
+                    <td>{tx.invoice.client_name ?? tx.invoice.lead?.name}</td>
                     <td className="text-right tabular-nums">{formatMoney(tx.amount, tx.invoice.currency)}</td>
                     <td>{PAYMENT_METHODS[tx.method] ?? tx.method.replaceAll("_", " ")}</td>
                     <td className="max-w-[260px]">

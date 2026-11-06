@@ -180,6 +180,12 @@ class User extends Authenticatable
         return $this->managesBrands() || $this->role === Role::Finance;
     }
 
+    /** Admins and Brand Managers on their brands. Finance can cancel, but the books aren't theirs to remove from. */
+    public function canDeleteInvoices(): bool
+    {
+        return $this->managesBrands();
+    }
+
     public function canAccessBrand(int $brandId): bool
     {
         return $this->hasGlobalAccess() || in_array($brandId, $this->brandIds(), true);

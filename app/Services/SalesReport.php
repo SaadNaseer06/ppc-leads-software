@@ -120,7 +120,8 @@ class SalesReport
     {
         $today = CarbonImmutable::now(config('ppc.report_timezone'))->format('Y-m-d');
         $invoices = Invoice::query()->visibleTo($user)
-            ->join('leads', 'leads.id', '=', 'invoices.lead_id')
+            // Left join: an invoice raised without a lead is still a sale
+            ->leftJoin('leads', 'leads.id', '=', 'invoices.lead_id')
             ->where('invoices.created_at', '>=', $from->utc())
             ->where('invoices.created_at', '<', $to->addDay()->utc())
             ->when($f['brand'], fn (Builder $q, $id) => $q->where('invoices.brand_id', $id))
@@ -139,7 +140,7 @@ class SalesReport
         $invoices->select([
             'invoices.id', 'invoices.number', 'invoices.amount', 'invoices.subtotal', 'invoices.discount', 'invoices.tax_amount',
             'invoices.currency', 'invoices.status', 'invoices.due_date', 'invoices.brand_id', 'invoices.created_by_id',
-            'invoices.created_at', 'leads.name as lead_name', 'leads.channel', 'leads.utm_campaign',
+            'invoices.created_at', 'invoices.client_name as lead_name', 'leads.channel', 'leads.utm_campaign',
         ])->selectRaw('(SELECT COALESCE(SUM(p.amount), 0) FROM payment_transactions p WHERE p.invoice_id = invoices.id) AS paid');
 
         return DB::query()->fromSub($invoices->toBase(), 'i');

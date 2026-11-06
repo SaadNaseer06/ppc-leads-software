@@ -7,11 +7,14 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
 
 class Invoice extends Model
 {
+    use SoftDeletes;
+
     public const STATUSES = ['sent', 'paid', 'cancelled'];
 
     public const PAYMENT_METHODS = ['bank_transfer', 'card', 'cash', 'cheque', 'paypal', 'stripe', 'other'];
@@ -58,6 +61,12 @@ class Invoice extends Model
     public function merchantName(): string
     {
         return $this->merchant_name ?: $this->brand->merchantName();
+    }
+
+    /** Who the invoice is billed to, as issued */
+    public function clientName(): string
+    {
+        return $this->client_name ?: ($this->lead?->name ?? 'Client');
     }
 
     public function money(float|string|null $value): string
@@ -165,7 +174,8 @@ class Invoice extends Model
     public static function createWithNumber(array $attributes): self
     {
         for ($attempt = 0; $attempt < 5; $attempt++) {
-            $last = self::query()->orderByDesc('id')->value('number');
+            // Deleted invoices count: a number that has been used is never issued again
+            $last = self::withTrashed()->orderByDesc('id')->value('number');
             $next = ((int) preg_replace('/\D/', '', (string) $last) ?: 1000) + 1 + $attempt;
             try {
                 return self::create([...$attributes, 'number' => "INV-{$next}"]);

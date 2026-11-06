@@ -301,10 +301,27 @@ export type InvoiceRow = {
   /** The page the client opens to view and pay */
   pay_url: string | null;
   created_at: string;
+  client_name: string | null;
+  client_email: string | null;
   brand: Ref;
-  lead: Ref;
+  /** Empty for an invoice raised without a lead */
+  lead: Ref | null;
   created_by: Ref;
 };
+
+export type BrandOption = Ref & { merchant_name: string | null };
+
+/** Why card payments are on or off. Names only, never key values. */
+export type BillingStatus = {
+  card_payments: boolean;
+  mode: "test" | "live" | null;
+  missing: string[];
+  needs_reload: boolean;
+  problem: string | null;
+  webhook: boolean;
+};
+
+export type InvoicesData = { invoices: InvoiceRow[]; limit: number; brands: BrandOption[]; billing: BillingStatus | null };
 
 export type FinanceData = {
   transactions: {
@@ -314,7 +331,7 @@ export type FinanceData = {
     external_ref: string | null;
     notes: string | null;
     recorded_at: string;
-    invoice: { id: number; number: string; currency: string; brand: Ref; lead: Ref };
+    invoice: { id: number; number: string; currency: string; client_name: string | null; brand: Ref; lead: Ref | null };
   }[];
   invoices: {
     id: number;
@@ -327,8 +344,10 @@ export type FinanceData = {
     is_overdue: boolean;
     pay_url: string | null;
     created_at: string;
+    client_name: string | null;
+    client_email: string | null;
     brand: Ref;
-    lead: Ref;
+    lead: Ref | null;
   }[];
   limit: number;
 };

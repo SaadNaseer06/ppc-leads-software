@@ -1,8 +1,11 @@
 import { FormEvent, useState } from "react";
-import { router } from "@inertiajs/react";
-import { Ban, CheckCircle2, CircleDollarSign, RotateCcw } from "lucide-react";
+import { router, usePage } from "@inertiajs/react";
+import { Ban, CheckCircle2, CircleDollarSign, Download, ExternalLink, RotateCcw, Trash2 } from "lucide-react";
+import type { SharedProps } from "@/types";
 import { formatMoney } from "@/lib/format";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { useConfirm } from "@/components/ui/confirm";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Modal } from "@/components/ui/modal";
 import { apiRequest, useToast } from "@/components/ui/toast";
 
@@ -37,7 +40,15 @@ export function InvoiceStatusBadge({ status, partlyPaid, overdue }: { status: st
   );
 }
 
-type InvoiceForActions = { id: number; number: string; amount: string; currency: string; status: string; paid_total: string | null };
+type InvoiceForActions = {
+  id: number;
+  number: string;
+  amount: string;
+  currency: string;
+  status: string;
+  paid_total: string | null;
+  pay_url: string | null;
+};
 
 /** Balance still due, in the invoice currency */
 export function balanceDue(invoice: { amount: string; paid_total: string | null }) {
@@ -45,11 +56,15 @@ export function balanceDue(invoice: { amount: string; paid_total: string | null 
 }
 
 export function InvoiceActions({ invoice }: { invoice: InvoiceForActions }) {
+  const can = usePage<SharedProps>().props.auth.user!.can;
   const toast = useToast();
   const confirm = useConfirm();
   const [paying, setPaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const balance = balanceDue(invoice);
+  const paid = Number(invoice.paid_total ?? 0) > 0;
+  const open = invoice.status !== "paid" && invoice.status !== "cancelled";
+  const icon = "h-3.5 w-3.5";
 
   async function setStatus(status: string, message: string) {
     setBusy(true);
@@ -63,70 +78,90 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceForActions }) {
     router.reload();
   }
 
-  if (invoice.status === "cancelled") {
-    return (
-      <button
-        type="button"
-        className="btn-ghost btn-sm"
-        disabled={busy}
-        onClick={() => setStatus("sent", `${invoice.number} reopened`)}
-        title="Reopen this invoice"
-      >
-        <RotateCcw className="h-3.5 w-3.5" />
-        Reopen
-      </button>
+  async function markPaid() {
+    const ok = await confirm({
+      title: `Mark ${invoice.number} as paid?`,
+      description:
+        balance > 0
+          ? `The remaining ${formatMoney(balance, invoice.currency)} is recorded as received. Use “Record payment” instead to add the method and reference.`
+          : "The invoice will show as paid.",
+      confirmLabel: "Mark as paid",
+      tone: "default",
+    });
+    if (ok) void setStatus("paid", `${invoice.number} marked as paid`);
+  }
+
+  async function cancelInvoice() {
+    const ok = await confirm({
+      title: `Cancel ${invoice.number}?`,
+      description: "Cancelled invoices are left out of invoiced and collected totals, and the client can no longer pay. You can reopen it later.",
+      confirmLabel: "Cancel invoice",
+      tone: "danger",
+    });
+    if (ok) void setStatus("cancelled", `${invoice.number} cancelled`);
+  }
+
+  async function deleteInvoice() {
+    const ok = await confirm(
+      paid
+        ? {
+            title: `Delete ${invoice.number}?`,
+            description: `This invoice has ${formatMoney(invoice.paid_total ?? 0, invoice.currency)} in payments. They'll be removed from your totals and reports, and the client's link will stop working. Money already taken stays in your Stripe or bank account.`,
+            confirmLabel: "Delete invoice",
+            tone: "danger",
+            requireText: "DELETE",
+            requireTextLabel: "Type DELETE to confirm",
+          }
+        : {
+            title: `Delete ${invoice.number}?`,
+            description: "It disappears from invoices and reports, and the client's link stops working.",
+            confirmLabel: "Delete invoice",
+            tone: "danger",
+          }
     );
+    if (!ok) return;
+
+    setBusy(true);
+    const res = await apiRequest(`/api/invoices/${invoice.id}${paid ? "?force=1" : ""}`, { method: "DELETE" });
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(`${invoice.number} deleted`);
+    router.reload();
   }
 
   return (
-    <div className="flex items-center justify-end gap-1">
-      {invoice.status !== "paid" && balance > 0 ? (
-        <button type="button" className="btn-secondary btn-sm" onClick={() => setPaying(true)} disabled={busy}>
-          <CircleDollarSign className="h-3.5 w-3.5" />
+    <div className="flex items-center justify-end gap-1.5">
+      {can.manage_invoices && open && balance > 0 ? (
+        <button type="button" className="btn-secondary btn-sm whitespace-nowrap" onClick={() => setPaying(true)} disabled={busy}>
+          <CircleDollarSign className={icon} />
           Record payment
         </button>
       ) : null}
-      {invoice.status !== "paid" ? (
-        <button
-          type="button"
-          className="btn-ghost btn-sm"
-          disabled={busy}
-          title="Mark the full balance as received"
-          onClick={async () => {
-            const ok = await confirm({
-              title: `Mark ${invoice.number} as paid?`,
-              description:
-                balance > 0
-                  ? `The remaining ${formatMoney(balance, invoice.currency)} is recorded as received. Use “Record payment” instead to add the method and reference.`
-                  : "The invoice will show as paid.",
-              confirmLabel: "Mark as paid",
-              tone: "default",
-            });
-            if (ok) void setStatus("paid", `${invoice.number} marked as paid`);
-          }}
-        >
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          Paid
-        </button>
-      ) : null}
-      <button
-        type="button"
-        className="btn-ghost btn-sm text-slate-500 hover:text-red-600"
-        disabled={busy}
-        title="Cancel invoice"
-        aria-label={`Cancel ${invoice.number}`}
-        onClick={async () => {
-          const ok = await confirm({
-            title: `Cancel ${invoice.number}?`,
-            description: "Cancelled invoices are left out of invoiced and collected totals. You can reopen it later.",
-            confirmLabel: "Cancel invoice",
-            tone: "danger",
-          });
-          if (ok) void setStatus("cancelled", `${invoice.number} cancelled`);
-        }}
-      >
-        <Ban className="h-3.5 w-3.5" />
-      </button>
+      {invoice.pay_url && invoice.status !== "cancelled" ? <CopyButton value={invoice.pay_url} label="Copy link" /> : null}
+      <ActionMenu
+        label={`More actions for ${invoice.number}`}
+        groups={[
+          [
+            ...(invoice.pay_url && invoice.status !== "cancelled"
+              ? [{ label: "View as client", icon: <ExternalLink className={icon} />, onSelect: () => void window.open(invoice.pay_url!, "_blank", "noopener") }]
+              : []),
+            { label: "Download PDF", icon: <Download className={icon} />, onSelect: () => window.location.assign(`/api/invoices/${invoice.id}/pdf`) },
+          ],
+          can.manage_invoices
+            ? [
+                ...(open ? [{ label: "Mark as paid", icon: <CheckCircle2 className={icon} />, onSelect: () => void markPaid(), disabled: busy }] : []),
+                ...(open ? [{ label: "Cancel invoice", icon: <Ban className={icon} />, onSelect: () => void cancelInvoice(), disabled: busy }] : []),
+                ...(invoice.status === "cancelled"
+                  ? [{ label: "Reopen invoice", icon: <RotateCcw className={icon} />, onSelect: () => void setStatus("sent", `${invoice.number} reopened`), disabled: busy }]
+                  : []),
+              ]
+            : [],
+          can.delete_invoices ? [{ label: "Delete invoice", icon: <Trash2 className={icon} />, onSelect: () => void deleteInvoice(), danger: true, disabled: busy }] : [],
+        ]}
+      />
 
       <RecordPaymentDialog open={paying} onClose={() => setPaying(false)} invoice={invoice} balance={balance} />
     </div>

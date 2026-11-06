@@ -91,6 +91,7 @@ class TeamDirectory
                 'view_invoices' => $user->canViewInvoices(),
                 'create_invoice' => $user->canCreateInvoice(),
                 'manage_invoices' => $user->canManageInvoices(),
+                'delete_invoices' => $user->canDeleteInvoices(),
                 'view_finance' => $user->canViewFinance(),
                 'view_reports' => $user->canViewReports(),
                 'manage_websites' => $user->canManageWebsites(),

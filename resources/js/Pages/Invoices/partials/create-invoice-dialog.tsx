@@ -2,12 +2,14 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
 import { CheckCircle2, CircleAlert, ExternalLink, Mail, Plus, X } from "lucide-react";
 import { formatMoney } from "@/lib/format";
+import type { BrandOption } from "@/lib/api-types";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Modal } from "@/components/ui/modal";
 import { apiRequest } from "@/components/ui/toast";
 
 type LeadBrand = { name: string; merchant_name?: string | null };
-type LeadOption = { id: number; name: string; email: string | null; company: string | null; brand?: LeadBrand | null };
+type LeadOption = { id: number; name: string; email: string | null; phone?: string | null; company: string | null; brand?: LeadBrand | null };
+type Client = { name: string; email: string; phone: string; company: string; address: string };
 type Item = { key: number; label: string; quantity: string; unit_price: string };
 type Created = {
   number: string;
@@ -16,18 +18,25 @@ type Created = {
   merchant_name: string;
   pay_url: string;
   card_payments: boolean;
-  lead: { name: string; email: string | null };
+  client: { name: string; email: string | null };
 };
 
 const CURRENCY = "USD";
+const clientFrom = (lead?: LeadOption | null): Client => ({
+  name: lead?.name ?? "",
+  email: lead?.email ?? "",
+  phone: lead?.phone ?? "",
+  company: lead?.company ?? "",
+  address: "",
+});
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const number = (value: string) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 };
 
-/** `lead` fixes who the invoice is for (from a lead's page); otherwise the dialog asks */
-export function CreateInvoiceButton({ lead, compact }: { lead?: LeadOption; compact?: boolean }) {
+/** `lead` fixes who the invoice is for (from a lead's page). `brands` are what a new client can be billed under. */
+export function CreateInvoiceButton({ lead, compact, brands = [] }: { lead?: LeadOption; compact?: boolean; brands?: BrandOption[] }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -36,12 +45,12 @@ export function CreateInvoiceButton({ lead, compact }: { lead?: LeadOption; comp
         <Plus className="h-4 w-4" />
         Create invoice
       </button>
-      <CreateInvoiceDialog open={open} onClose={() => setOpen(false)} lead={lead} />
+      <CreateInvoiceDialog open={open} onClose={() => setOpen(false)} lead={lead} brands={brands} />
     </>
   );
 }
 
-function CreateInvoiceDialog({ open, onClose, lead }: { open: boolean; onClose: () => void; lead?: LeadOption }) {
+function CreateInvoiceDialog({ open, onClose, lead, brands }: { open: boolean; onClose: () => void; lead?: LeadOption; brands: BrandOption[] }) {
   const [created, setCreated] = useState<Created | null>(null);
 
   function close() {
@@ -58,16 +67,28 @@ function CreateInvoiceDialog({ open, onClose, lead }: { open: boolean; onClose: 
       title={created ? `Invoice ${created.number} is ready` : "Create invoice"}
       description={created ? undefined : "Add what you're charging for. A secure payment link is created for the client."}
     >
-      {created ? <InvoiceReady invoice={created} onDone={close} /> : <InvoiceForm lead={lead} onCancel={close} onCreated={setCreated} />}
+      {created ? <InvoiceReady invoice={created} onDone={close} /> : open ? <InvoiceForm lead={lead} brands={brands} onCancel={close} onCreated={setCreated} /> : null}
     </Modal>
   );
 }
 
-function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCancel: () => void; onCreated: (invoice: Created) => void }) {
+function InvoiceForm({
+  lead,
+  brands,
+  onCancel,
+  onCreated,
+}: {
+  lead?: LeadOption;
+  brands: BrandOption[];
+  onCancel: () => void;
+  onCreated: (invoice: Created) => void;
+}) {
   const nextKey = useRef(1);
   const [items, setItems] = useState<Item[]>([{ key: 0, label: "", quantity: "1", unit_price: "" }]);
-  const [leadId, setLeadId] = useState<number | "">(lead?.id ?? "");
-  const [pickedBrand, setPickedBrand] = useState<LeadBrand | null>(null);
+  const [billing, setBilling] = useState<"new" | "lead">("new");
+  const [picked, setPicked] = useState<LeadOption | null>(null);
+  const [brandId, setBrandId] = useState<number | "">(brands.length === 1 ? brands[0].id : "");
+  const [client, setClient] = useState<Client>(clientFrom(lead));
   // Follows the client's brand until someone types their own
   const [typedMerchant, setTypedMerchant] = useState<string | null>(null);
   const [discount, setDiscount] = useState("");
@@ -85,15 +106,22 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
     return { subtotal, off, tax, total: round(subtotal - off + tax) };
   }, [items, discount, taxRate]);
 
-  const brand = lead?.brand ?? pickedBrand;
+  // A lead brings its own brand; a new client is billed under the one chosen here
+  const linked = lead ?? (billing === "lead" ? picked : null);
+  const brand: LeadBrand | null = linked ? (linked.brand ?? null) : (brands.find((b) => b.id === brandId) ?? null);
   const merchant = typedMerchant ?? brand?.merchant_name ?? brand?.name ?? "";
+  const setField = (field: keyof Client, value: string) => setClient((c) => ({ ...c, [field]: value }));
 
   const update = (key: number, change: Partial<Item>) => setItems((all) => all.map((i) => (i.key === key ? { ...i, ...change } : i)));
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!leadId) {
-      setError("Choose who this invoice is for.");
+    if (billing === "lead" && !linked) {
+      setError("Choose the lead this invoice is for.");
+      return;
+    }
+    if (!linked && !brandId) {
+      setError("Choose which brand this invoice is from.");
       return;
     }
     setSaving(true);
@@ -101,7 +129,13 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
     const res = await apiRequest<Created>("/api/invoices", {
       method: "POST",
       body: {
-        lead_id: Number(leadId),
+        lead_id: linked?.id ?? null,
+        brand_id: linked ? null : brandId || null,
+        client_name: client.name.trim() || null,
+        client_email: client.email.trim() || null,
+        client_phone: client.phone.trim() || null,
+        client_company: client.company.trim() || null,
+        client_address: client.address.trim() || null,
         items: items.map((i) => ({ label: i.label.trim(), quantity: number(i.quantity), unit_price: number(i.unit_price) })),
         discount: number(discount) || null,
         tax_rate: number(taxRate) || null,
@@ -121,32 +155,92 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
-      {lead ? (
-        <p className="text-sm text-slate-600">
-          Billing <span className="font-medium text-slate-900">{lead.name}</span>
-          {lead.email ? ` · ${lead.email}` : ""}
-        </p>
-      ) : (
-        <LeadPicker
-          value={leadId}
-          onChange={(id, picked) => {
-            setLeadId(id);
-            setPickedBrand(picked?.brand ?? null);
-          }}
-        />
+      {lead ? null : (
+        <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Who is this invoice for?">
+          {(
+            [
+              ["new", "New client"],
+              ["lead", "Existing lead"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={billing === value}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${billing === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+              onClick={() => {
+                setBilling(value);
+                setClient(clientFrom(value === "lead" ? picked : null));
+                setError("");
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
 
-      <div>
-        <label className="label" htmlFor="inv-merchant">Merchant name</label>
-        <input
-          id="inv-merchant"
-          className="input"
-          value={merchant}
-          onChange={(e) => setTypedMerchant(e.target.value)}
-          maxLength={120}
-          placeholder={brand ? brand.name : "Choose the client first"}
+      {billing === "lead" && !lead ? (
+        <LeadPicker
+          value={picked?.id ?? ""}
+          onChange={(found) => {
+            setPicked(found ?? null);
+            setClient(clientFrom(found));
+          }}
         />
-        <p className="mt-1.5 text-xs text-slate-500">Shown to the client as who they're paying.</p>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="inv-client">Client name *</label>
+          <input id="inv-client" className="input" value={client.name} onChange={(e) => setField("name", e.target.value)} maxLength={191} required autoFocus={billing === "new" && !lead} />
+        </div>
+        <div>
+          <label className="label" htmlFor="inv-email">Client email</label>
+          <input id="inv-email" className="input" type="email" value={client.email} onChange={(e) => setField("email", e.target.value)} maxLength={191} />
+        </div>
+        <div>
+          <label className="label" htmlFor="inv-company">Company</label>
+          <input id="inv-company" className="input" value={client.company} onChange={(e) => setField("company", e.target.value)} maxLength={191} />
+        </div>
+        <div>
+          <label className="label" htmlFor="inv-phone">Phone</label>
+          <input id="inv-phone" className="input" value={client.phone} onChange={(e) => setField("phone", e.target.value)} maxLength={50} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="inv-address">Billing address</label>
+          <input id="inv-address" className="input" value={client.address} onChange={(e) => setField("address", e.target.value)} maxLength={500} />
+        </div>
+      </div>
+
+      <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="inv-brand">Brand</label>
+          {!linked && brands.length > 1 ? (
+            <select id="inv-brand" className="input" value={brandId} onChange={(e) => setBrandId(e.target.value ? Number(e.target.value) : "")} required>
+              <option value="">Select a brand</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          ) : (
+            <p id="inv-brand" className="flex h-[38px] items-center rounded-lg bg-slate-50 px-3 text-sm text-slate-700">
+              {linked ? (brand?.name ?? "The lead's brand") : (brands[0]?.name ?? "No brand assigned to you yet")}
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="label" htmlFor="inv-merchant">Merchant name</label>
+          <input
+            id="inv-merchant"
+            className="input"
+            value={merchant}
+            onChange={(e) => setTypedMerchant(e.target.value)}
+            maxLength={120}
+            placeholder={brand ? brand.name : "Follows the brand"}
+          />
+          <p className="mt-1.5 text-xs text-slate-500">Shown to the client as who they're paying.</p>
+        </div>
       </div>
 
       <div>
@@ -168,7 +262,6 @@ function InvoiceForm({ lead, onCancel, onCreated }: { lead?: LeadOption; onCance
                 aria-label={`Item ${index + 1} description`}
                 maxLength={191}
                 required
-                autoFocus={index === 0 && Boolean(lead)}
               />
               <input
                 className="input"
@@ -272,7 +365,7 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LeadPicker({ value, onChange }: { value: number | ""; onChange: (id: number | "", lead?: LeadOption) => void }) {
+function LeadPicker({ value, onChange }: { value: number | ""; onChange: (lead?: LeadOption) => void }) {
   const [q, setQ] = useState("");
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -305,11 +398,8 @@ function LeadPicker({ value, onChange }: { value: number | ""; onChange: (id: nu
         <input id="inv-search" className="input" placeholder="Name, email, company…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
       </div>
       <div>
-        <label className="label" htmlFor="inv-lead">Client *</label>
-        <select id="inv-lead" className="input" value={value} onChange={(e) => {
-            const id = e.target.value ? Number(e.target.value) : "";
-            onChange(id, leads.find((l) => l.id === id));
-          }} required>
+        <label className="label" htmlFor="inv-lead">Lead *</label>
+        <select id="inv-lead" className="input" value={value} onChange={(e) => onChange(leads.find((l) => l.id === Number(e.target.value)))} required>
           <option value="">{loading ? "Loading…" : "Select a lead"}</option>
           {leads.map((l) => (
             <option key={l.id} value={l.id}>
@@ -326,9 +416,9 @@ function LeadPicker({ value, onChange }: { value: number | ""; onChange: (id: nu
 
 /** Straight after creating: the link is what the rep came for */
 function InvoiceReady({ invoice, onDone }: { invoice: Created; onDone: () => void }) {
-  const subject = encodeURIComponent(`Invoice ${invoice.number}`);
+  const subject = encodeURIComponent(`Invoice ${invoice.number} from ${invoice.merchant_name}`);
   const body = encodeURIComponent(
-    `Hi ${invoice.lead.name},\n\nHere is your invoice for ${formatMoney(invoice.amount, invoice.currency)}. You can view and pay it here:\n${invoice.pay_url}\n\nThank you.`
+    `Hi ${invoice.client.name},\n\nHere is your invoice for ${formatMoney(invoice.amount, invoice.currency)}. You can view and pay it here:\n${invoice.pay_url}\n\nThank you,\n${invoice.merchant_name}`
   );
 
   return (
@@ -336,7 +426,7 @@ function InvoiceReady({ invoice, onDone }: { invoice: Created; onDone: () => voi
       <div className="flex items-start gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
         <p>
-          {formatMoney(invoice.amount, invoice.currency)} for {invoice.lead.name}, payable to {invoice.merchant_name}. Send them this link to view and pay the invoice.
+          {formatMoney(invoice.amount, invoice.currency)} for {invoice.client.name}, payable to {invoice.merchant_name}. Send them this link to view and pay the invoice.
         </p>
       </div>
       {!invoice.card_payments ? (
@@ -355,7 +445,7 @@ function InvoiceReady({ invoice, onDone }: { invoice: Created; onDone: () => voi
           <ExternalLink className="h-3.5 w-3.5" />
           Preview
         </a>
-        <a className="btn-secondary btn-sm" href={`mailto:${invoice.lead.email ?? ""}?subject=${subject}&body=${body}`}>
+        <a className="btn-secondary btn-sm" href={`mailto:${invoice.client.email ?? ""}?subject=${subject}&body=${body}`}>
           <Mail className="h-3.5 w-3.5" />
           Email client
         </a>
