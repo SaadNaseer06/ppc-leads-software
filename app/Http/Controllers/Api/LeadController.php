@@ -11,9 +11,9 @@ use App\Models\Brand;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\LeadEmail;
+use App\Models\Mailbox;
 use App\Models\User;
 use App\Models\Website;
-use App\Services\BrandMailbox;
 use App\Services\ContactMask;
 use App\Services\LeadAssignment;
 use App\Services\LeadDeletion;
@@ -142,8 +142,8 @@ class LeadController extends Controller
             'unpaid_invoice' => $unpaid,
             'emails' => $lead->emails()->with('user:id,name')->orderByDesc('sent_at')->orderByDesc('id')->limit(50)->get()
                 ->map(fn (LeadEmail $e) => ContactController::emailRow($e, $user))->values(),
-            // The brand relation above only carries its name: read the mail settings themselves
-            'mailbox' => app(BrandMailbox::class)->configured(Brand::find($lead->brand_id)),
+            // The address this person would send from on the lead's brand
+            'mailbox' => Mailbox::forSender($lead->brand_id, $user)?->address,
         ]);
     }
 

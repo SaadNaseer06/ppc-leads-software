@@ -44,9 +44,9 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
   `+• ••• •••-•821`), everywhere and in the API. They reveal a lead's details one at a time: each reveal is logged on the
   Contact log page, with a daily limit (`CONTACT_REVEAL_DAILY_LIMIT`, 30 by default). Their screens carry a faint
   watermark with their name. Admins, Brand Managers, Finance and Super Admins see everything.
-- **Email.** A Super Admin connects each brand's mailbox (for example `sales@` on cPanel webmail) on the Email page.
-  The team emails leads from the lead page without seeing the address, and clients' replies are filed on the lead
-  within a minute. Invoices can be emailed from the brand's mailbox too.
+- **Email.** A Super Admin connects each rep's mailbox on the brand's domain (for example `riley@yourbrand.com` on
+  cPanel webmail), plus an optional shared one per brand, on the Email page. Reps email leads from the lead page without
+  seeing the address, and clients' replies are filed on the lead within a minute. Invoices can be emailed too.
 - **Card payments per brand.** A Super Admin adds a brand's merchant name and Stripe keys on the Payments page
   in the sidebar. Stripe checks the key before it's saved, secrets are stored encrypted, and each brand's money goes to
   its own Stripe account. Brands with no keys of their own use `STRIPE_*` from `.env`, if set.

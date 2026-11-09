@@ -21,19 +21,27 @@ return new class extends Migration
             $table->index(['brand_id', 'created_at']);
         });
 
-        // One shared mailbox per brand: sent from the app, replies collected over IMAP
-        Schema::table('brands', function (Blueprint $table) {
-            $table->string('mail_address', 191)->nullable()->after('stripe_account_name');
-            $table->string('mail_from_name', 120)->nullable()->after('mail_address');
-            $table->string('mail_host', 191)->nullable()->after('mail_from_name');
-            $table->unsignedSmallInteger('mail_imap_port')->nullable()->after('mail_host');
-            $table->unsignedSmallInteger('mail_smtp_port')->nullable()->after('mail_imap_port');
-            $table->string('mail_username', 191)->nullable()->after('mail_smtp_port');
-            $table->text('mail_password')->nullable()->after('mail_username');
-            $table->unsignedBigInteger('mail_last_uid')->nullable()->after('mail_password');
-            $table->unsignedBigInteger('mail_uid_validity')->nullable()->after('mail_last_uid');
-            $table->dateTime('mail_checked_at')->nullable()->after('mail_uid_validity');
-            $table->string('mail_error', 500)->nullable()->after('mail_checked_at');
+        // Mailboxes on a brand's domain: one per person (riley@brand.com), and optionally one shared by the brand (sales@)
+        Schema::create('mailboxes', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('brand_id')->constrained()->cascadeOnDelete();
+            // Null for the brand's shared mailbox
+            $table->foreignId('user_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->string('address', 191);
+            $table->string('from_name', 120)->nullable();
+            $table->string('host', 191);
+            $table->unsignedSmallInteger('imap_port');
+            $table->unsignedSmallInteger('smtp_port');
+            $table->string('username', 191)->nullable();
+            $table->text('password');
+            $table->unsignedBigInteger('last_uid')->nullable();
+            $table->unsignedBigInteger('uid_validity')->nullable();
+            $table->dateTime('checked_at')->nullable();
+            $table->string('error', 500)->nullable();
+            $table->timestamps();
+
+            $table->unique('address');
+            $table->index(['brand_id', 'user_id']);
         });
 
         Schema::create('lead_emails', function (Blueprint $table) {
@@ -41,6 +49,7 @@ return new class extends Migration
             $table->foreignId('lead_id')->constrained()->cascadeOnDelete();
             $table->foreignId('brand_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('mailbox_id')->nullable()->constrained()->nullOnDelete();
             $table->string('direction', 3);
             $table->string('from_email', 191);
             $table->string('from_name', 191)->nullable();
@@ -60,12 +69,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('lead_emails');
-        Schema::table('brands', function (Blueprint $table) {
-            $table->dropColumn([
-                'mail_address', 'mail_from_name', 'mail_host', 'mail_imap_port', 'mail_smtp_port', 'mail_username',
-                'mail_password', 'mail_last_uid', 'mail_uid_validity', 'mail_checked_at', 'mail_error',
-            ]);
-        });
+        Schema::dropIfExists('mailboxes');
         Schema::dropIfExists('contact_reveals');
     }
 };

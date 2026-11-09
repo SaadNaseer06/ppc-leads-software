@@ -87,7 +87,7 @@ export function EmailsCard({
 }: {
   leadId: number;
   emails: LeadEmailRow[];
-  mailbox: boolean;
+  mailbox: string | null;
   hasEmail: boolean;
   canSend: boolean;
 }) {
@@ -123,7 +123,7 @@ export function EmailsCard({
     router.reload();
   }
 
-  const blocked = !mailbox ? "No mailbox is connected for this brand yet. A Super Admin can connect one on the Email page." : !hasEmail ? "This lead has no email address." : null;
+  const blocked = !mailbox ? "You don't have a mailbox on this brand yet. A Super Admin can connect one on the Email page." : !hasEmail ? "This lead has no email address." : null;
 
   return (
     <section className="card">
@@ -139,7 +139,10 @@ export function EmailsCard({
 
       {open ? (
         <form onSubmit={send} className="space-y-3 border-b border-slate-100 p-4">
-          {replyTo ? <p className="text-xs text-slate-500">Replying to “{replyTo.subject}”</p> : null}
+          <p className="text-xs text-slate-500">
+            From <span className="font-medium text-slate-700">{mailbox}</span>
+            {replyTo ? <> · replying to “{replyTo.subject}”</> : null}
+          </p>
           <input className="input" placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} required aria-label="Subject" autoFocus={!replyTo} />
           <textarea className="input" rows={6} placeholder="Write your message…" value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} required aria-label="Message" autoFocus={Boolean(replyTo)} />
           {error ? <p className="text-sm text-red-600">{error}</p> : null}

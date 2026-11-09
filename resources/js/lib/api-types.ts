@@ -119,8 +119,8 @@ export type LeadDetail = {
   /** An invoice still to be paid keeps the lead with Front Sales */
   unpaid_invoice: boolean;
   emails: LeadEmailRow[];
-  /** The brand has a mailbox connected, so the lead can be emailed from the app */
-  mailbox: boolean;
+  /** The address this person sends from on the lead's brand, if they have one */
+  mailbox: string | null;
 };
 
 export type DashboardData = {
@@ -458,19 +458,26 @@ export type LeadEmailRow = {
 
 export type MailboxRow = {
   id: number;
-  name: string;
-  connected: boolean;
-  address: string | null;
+  brand_id: number;
+  /** Empty for the brand's shared mailbox */
+  user_id: number | null;
+  brand: string;
+  owner: string | null;
+  address: string;
   from_name: string | null;
-  host: string | null;
-  imap_port: number | null;
-  smtp_port: number | null;
+  host: string;
+  imap_port: number;
+  smtp_port: number;
   username: string | null;
   checked_at: string | null;
   error: string | null;
 };
 
-export type MailboxesData = { brands: MailboxRow[] };
+export type MailboxesData = {
+  mailboxes: MailboxRow[];
+  brands: Ref[];
+  people: { id: number; name: string; role: string; brand_ids: number[] }[];
+};
 
 export type ContactLogData = {
   limit: number;

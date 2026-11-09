@@ -7,12 +7,13 @@ use App\Models\ActivityLog;
 use App\Models\Brand;
 use App\Models\Invoice;
 use App\Models\Lead;
+use App\Models\Mailbox;
 use App\Models\PaymentTransaction;
 use App\Models\User;
-use App\Services\BrandMailbox;
 use App\Services\ContactMask;
 use App\Services\InvoicePayments;
 use App\Services\InvoicePdf;
+use App\Services\MailboxService;
 use App\Services\StripePayments;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -151,7 +152,7 @@ class InvoiceController extends Controller
             'merchant_name' => $invoice->merchant_name,
             'pay_url' => $invoice->pay_url,
             'card_payments' => $this->stripe->configured($brand),
-            'mailbox' => app(BrandMailbox::class)->configured($brand),
+            'mailbox' => Mailbox::forSender($brand->id, $user) !== null,
             'client' => ['name' => $invoice->client_name, 'email' => $invoice->client_email],
         ], 201);
     }
@@ -193,7 +194,7 @@ class InvoiceController extends Controller
     }
 
     /** Sends the client their pay link from the brand's mailbox, so reps never need the address */
-    public function emailClient(Request $request, int $id, BrandMailbox $mailbox): JsonResponse
+    public function emailClient(Request $request, int $id, MailboxService $mail): JsonResponse
     {
         $user = $request->user();
         abort_unless($user->canViewInvoices(), 403);
@@ -201,15 +202,16 @@ class InvoiceController extends Controller
         if (! $invoice->client_email) {
             return response()->json(['error' => 'This invoice has no client email address.'], 422);
         }
-        if (! $mailbox->configured($invoice->brand)) {
-            return response()->json(['error' => "{$invoice->brand->name} has no mailbox connected yet. A Super Admin can connect one on the Email page."], 422);
+        $mailbox = Mailbox::forSender($invoice->brand_id, $user);
+        if (! $mailbox) {
+            return response()->json(['error' => "You don't have a mailbox on {$invoice->brand->name} yet. A Super Admin can connect one on the Email page."], 422);
         }
 
         $merchant = $invoice->merchantName();
         $body = "Hi {$invoice->clientName()},\n\nHere is your invoice {$invoice->number} for {$invoice->money($invoice->balanceDue())}. "
             ."You can view and pay it here:\n{$invoice->pay_url}\n\nThank you,\n{$merchant}";
         try {
-            $mailbox->send($invoice->brand, $invoice->client_email, $invoice->clientName(), $invoice->lead, $user, "Invoice {$invoice->number} from {$merchant}", $body);
+            $mail->send($mailbox, $invoice->client_email, $invoice->clientName(), $invoice->lead, $user, "Invoice {$invoice->number} from {$merchant}", $body);
         } catch (TransportExceptionInterface $e) {
             report($e);
 

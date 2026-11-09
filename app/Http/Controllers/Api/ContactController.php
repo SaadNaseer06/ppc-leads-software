@@ -7,10 +7,11 @@ use App\Models\Brand;
 use App\Models\ContactReveal;
 use App\Models\Lead;
 use App\Models\LeadEmail;
+use App\Models\Mailbox;
 use App\Models\User;
-use App\Services\BrandMailbox;
 use App\Services\ContactMask;
 use App\Services\ContactReveals;
+use App\Services\MailboxService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,8 +30,8 @@ class ContactController extends Controller
         return response()->json($reveals->reveal($user, $lead, $data['reason'] ?? null));
     }
 
-    /** Emails the lead from the brand's mailbox. The address is filled in here, so reps never need to see it. */
-    public function sendEmail(Request $request, int $id, BrandMailbox $mailbox): JsonResponse
+    /** Emails the lead from the sender's own mailbox on the brand. The address is filled in here, so reps never need to see it. */
+    public function sendEmail(Request $request, int $id, MailboxService $mail): JsonResponse
     {
         $user = $request->user();
         abort_unless($user->canWorkLeads(), 403);
@@ -44,15 +45,16 @@ class ContactController extends Controller
         if (! $lead->email) {
             return response()->json(['error' => 'This lead has no email address.'], 422);
         }
-        if (! $mailbox->configured($lead->brand)) {
-            return response()->json(['error' => "{$lead->brand->name} has no mailbox connected yet. A Super Admin can connect one on the Email page."], 422);
+        $mailbox = Mailbox::forSender($lead->brand_id, $user);
+        if (! $mailbox) {
+            return response()->json(['error' => "You don't have a mailbox on {$lead->brand->name} yet. A Super Admin can connect one on the Email page."], 422);
         }
         $inReplyTo = isset($data['reply_to_id'])
             ? LeadEmail::where('lead_id', $lead->id)->whereKey($data['reply_to_id'])->value('message_id')
             : null;
 
         try {
-            $email = $mailbox->send($lead->brand, $lead->email, $lead->name, $lead, $user, $data['subject'], $data['body'], $inReplyTo);
+            $email = $mail->send($mailbox, $lead->email, $lead->name, $lead, $user, $data['subject'], $data['body'], $inReplyTo);
         } catch (TransportExceptionInterface $e) {
             report($e);
 

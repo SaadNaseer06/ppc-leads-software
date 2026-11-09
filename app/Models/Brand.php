@@ -19,7 +19,7 @@ class Brand extends Model
     ];
 
     /** A brand can end up in a JSON response through a relation: these must never go with it */
-    protected $hidden = ['stripe_secret_key', 'stripe_webhook_secret', 'mail_password'];
+    protected $hidden = ['stripe_secret_key', 'stripe_webhook_secret'];
 
     /** @var array<int, string>|null Connected invoice domains by brand, read once per request */
     private static ?array $payHosts = null;
@@ -31,8 +31,6 @@ class Brand extends Model
             'pay_domain_verified_at' => 'datetime',
             'stripe_secret_key' => 'encrypted',
             'stripe_webhook_secret' => 'encrypted',
-            'mail_password' => 'encrypted',
-            'mail_checked_at' => 'datetime',
         ];
     }
 

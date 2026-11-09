@@ -1,6 +1,6 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Head, router } from "@inertiajs/react";
-import { CircleAlert, Inbox, Unplug } from "lucide-react";
+import { CircleAlert, Inbox, Plus, ShieldAlert, Unplug } from "lucide-react";
 import type { MailboxesData, MailboxRow } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
 import { useConfirm } from "@/components/ui/confirm";
@@ -8,9 +8,9 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { apiRequest, useToast } from "@/components/ui/toast";
 
-/** Each brand's shared mailbox, for example sales@ on cPanel webmail */
-export default function EmailIndex({ brands }: MailboxesData) {
-  const [editing, setEditing] = useState<MailboxRow | null>(null);
+/** Mailboxes on each brand's domain: one per person (riley@brand.com), and optionally one shared by the brand */
+export default function EmailIndex({ mailboxes, brands, people }: MailboxesData) {
+  const [editing, setEditing] = useState<MailboxRow | "new" | null>(null);
   const now = new Date();
 
   return (
@@ -18,47 +18,65 @@ export default function EmailIndex({ brands }: MailboxesData) {
       <Head title="Email" />
       <PageHeader
         title="Email"
-        description="Connect each brand's mailbox, such as sales@ from cPanel webmail. The team emails leads from the lead page, and clients' replies are filed on the lead within a minute."
+        description="Connect each person's mailbox on the brand's domain, such as riley@yourbrand.com from cPanel. They email leads from the lead page, and clients' replies are filed on the lead within a minute."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setEditing("new")}>
+            <Plus className="h-4 w-4" />
+            Add mailbox
+          </button>
+        }
       />
 
+      <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+        Keep the passwords yourself. A rep who knows their mailbox password can open webmail directly and see clients' full email addresses there, which the app keeps masked.
+      </p>
+
       <div className="card overflow-hidden">
-        {brands.length === 0 ? (
-          <EmptyState icon={<Inbox className="h-5 w-5" />} title="No brands yet" description="Create a brand under Brands & routing first." />
+        {mailboxes.length === 0 ? (
+          <EmptyState
+            icon={<Inbox className="h-5 w-5" />}
+            title="No mailboxes yet"
+            description="Add one for each rep, on each brand they work."
+            action={
+              <button type="button" className="btn-primary btn-sm" onClick={() => setEditing("new")}>
+                Add mailbox
+              </button>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
               <thead>
                 <tr>
                   <th>Brand</th>
-                  <th>Mailbox</th>
-                  <th>Server</th>
+                  <th>Person</th>
+                  <th>Address</th>
                   <th>Last checked</th>
                   <th>Status</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {brands.map((b) => (
-                  <tr key={b.id}>
-                    <td className="whitespace-nowrap font-medium text-slate-900">{b.name}</td>
-                    <td>{b.address ?? <span className="text-slate-400">None</span>}</td>
-                    <td className="text-slate-600">{b.host ?? <span className="text-slate-400">—</span>}</td>
-                    <td className="whitespace-nowrap text-slate-600">{b.checked_at ? formatRelative(b.checked_at, now) : <span className="text-slate-400">—</span>}</td>
+                {mailboxes.map((m) => (
+                  <tr key={m.id}>
+                    <td className="whitespace-nowrap font-medium text-slate-900">{m.brand}</td>
+                    <td className="whitespace-nowrap">{m.owner ?? <span className="text-slate-500">Shared by the brand</span>}</td>
+                    <td>{m.address}</td>
+                    <td className="whitespace-nowrap text-slate-600">{m.checked_at ? formatRelative(m.checked_at, now) : <span className="text-slate-400">—</span>}</td>
                     <td className="max-w-[260px]">
-                      {!b.connected ? (
-                        <span className="badge badge-dot border-slate-200 bg-slate-100 text-slate-600">Not connected</span>
-                      ) : b.error ? (
-                        <span className="flex items-start gap-1.5 text-xs text-red-700" title={b.error}>
+                      {m.error ? (
+                        <span className="flex items-start gap-1.5 text-xs text-red-700" title={m.error}>
                           <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                          <span className="line-clamp-2">{b.error}</span>
+                          <span className="line-clamp-2">{m.error}</span>
                         </span>
                       ) : (
                         <span className="badge badge-dot border-emerald-100 bg-emerald-50 text-emerald-700">Connected</span>
                       )}
                     </td>
                     <td className="text-right">
-                      <button type="button" className={b.connected ? "btn-secondary btn-sm" : "btn-primary btn-sm"} onClick={() => setEditing(b)}>
-                        {b.connected ? "Edit" : "Connect"}
+                      <button type="button" className="btn-secondary btn-sm" onClick={() => setEditing(m)}>
+                        Edit
                       </button>
                     </td>
                   </tr>
@@ -69,25 +87,57 @@ export default function EmailIndex({ brands }: MailboxesData) {
         )}
       </div>
 
-      <Modal open={editing !== null} onClose={() => setEditing(null)} wide title={editing ? `Mailbox: ${editing.name}` : "Mailbox"} description="We log in to check the details before saving.">
-        {editing ? <MailboxForm key={editing.id} brand={editing} onClose={() => setEditing(null)} /> : null}
+      <Modal
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        wide
+        title={editing === "new" ? "Add a mailbox" : editing ? `Mailbox: ${editing.address}` : "Mailbox"}
+        description="We log in to check the details before saving."
+      >
+        {editing ? (
+          <MailboxForm key={editing === "new" ? "new" : editing.id} mailbox={editing === "new" ? null : editing} brands={brands} people={people} taken={mailboxes} onClose={() => setEditing(null)} />
+        ) : null}
       </Modal>
     </div>
   );
 }
 
-function MailboxForm({ brand, onClose }: { brand: MailboxRow; onClose: () => void }) {
+function MailboxForm({
+  mailbox,
+  brands,
+  people,
+  taken,
+  onClose,
+}: {
+  mailbox: MailboxRow | null;
+  brands: MailboxesData["brands"];
+  people: MailboxesData["people"];
+  taken: MailboxRow[];
+  onClose: () => void;
+}) {
   const toast = useToast();
   const confirm = useConfirm();
-  const [address, setAddress] = useState(brand.address ?? "");
-  const [fromName, setFromName] = useState(brand.from_name ?? "");
-  const [host, setHost] = useState(brand.host ?? "");
-  const [imapPort, setImapPort] = useState(String(brand.imap_port ?? 993));
-  const [smtpPort, setSmtpPort] = useState(String(brand.smtp_port ?? 465));
-  const [username, setUsername] = useState(brand.username ?? "");
+  const [brandId, setBrandId] = useState<number | "">(mailbox?.brand_id ?? (brands.length === 1 ? brands[0].id : ""));
+  const [owner, setOwner] = useState<string>(mailbox ? String(mailbox.user_id ?? "shared") : "");
+  const [address, setAddress] = useState(mailbox?.address ?? "");
+  const [fromName, setFromName] = useState(mailbox?.from_name ?? "");
+  const [host, setHost] = useState(mailbox?.host ?? "");
+  const [imapPort, setImapPort] = useState(String(mailbox?.imap_port ?? 993));
+  const [smtpPort, setSmtpPort] = useState(String(mailbox?.smtp_port ?? 465));
+  const [username, setUsername] = useState(mailbox?.username ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // People on the chosen brand who don't have a mailbox there yet
+  const choices = useMemo(() => {
+    if (!brandId) return [];
+    const used = new Set(taken.filter((m) => m.brand_id === brandId).map((m) => String(m.user_id ?? "shared")));
+    return [
+      ...(used.has("shared") ? [] : [{ value: "shared", label: "Shared by the whole brand" }]),
+      ...people.filter((p) => p.brand_ids.includes(brandId) && !used.has(String(p.id))).map((p) => ({ value: String(p.id), label: `${p.name} · ${p.role}` })),
+    ];
+  }, [brandId, people, taken]);
 
   // cPanel's mail server is usually mail.<the domain>
   function onAddress(value: string) {
@@ -98,11 +148,16 @@ function MailboxForm({ brand, onClose }: { brand: MailboxRow; onClose: () => voi
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!mailbox && (!brandId || !owner)) {
+      setError("Choose the brand and who the mailbox belongs to.");
+      return;
+    }
     setSaving(true);
     setError("");
-    const res = await apiRequest(`/api/admin/brands/${brand.id}/mailbox`, {
-      method: "PATCH",
+    const res = await apiRequest(mailbox ? `/api/admin/mailboxes/${mailbox.id}` : "/api/admin/mailboxes", {
+      method: mailbox ? "PATCH" : "POST",
       body: {
+        ...(mailbox ? {} : { brand_id: brandId, user_id: owner === "shared" ? null : Number(owner) }),
         address: address.trim(),
         from_name: fromName.trim() || null,
         host: host.trim(),
@@ -117,20 +172,21 @@ function MailboxForm({ brand, onClose }: { brand: MailboxRow; onClose: () => voi
       setError(res.error);
       return;
     }
-    toast.success(`${brand.name}'s mailbox is connected`);
+    toast.success(`${address.trim()} is connected`);
     onClose();
     router.reload();
   }
 
   async function disconnect() {
+    if (!mailbox) return;
     const ok = await confirm({
-      title: `Disconnect ${brand.name}'s mailbox?`,
-      description: "The team can't email leads from the app, and replies stop being filed. Emails already on leads are kept.",
+      title: `Disconnect ${mailbox.address}?`,
+      description: "Emails can't be sent from it in the app, and its replies stop being filed. Emails already on leads are kept.",
       confirmLabel: "Disconnect",
       tone: "danger",
     });
     if (!ok) return;
-    const res = await apiRequest(`/api/admin/brands/${brand.id}/mailbox`, { method: "DELETE" });
+    const res = await apiRequest(`/api/admin/mailboxes/${mailbox.id}`, { method: "DELETE" });
     if (!res.ok) {
       setError(res.error);
       return;
@@ -142,17 +198,53 @@ function MailboxForm({ brand, onClose }: { brand: MailboxRow; onClose: () => voi
 
   return (
     <form onSubmit={onSubmit} className="space-y-4" autoComplete="off">
+      {mailbox ? (
+        <p className="text-sm text-slate-600">
+          {mailbox.brand} · {mailbox.owner ?? "Shared by the brand"}
+        </p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="mb-brand">Brand *</label>
+            <select
+              id="mb-brand"
+              className="input"
+              value={brandId}
+              onChange={(e) => {
+                setBrandId(e.target.value ? Number(e.target.value) : "");
+                setOwner("");
+              }}
+              required
+            >
+              <option value="">Select a brand</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="mb-owner">Belongs to *</label>
+            <select id="mb-owner" className="input" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={!brandId} required>
+              <option value="">{brandId ? "Select a person" : "Choose the brand first"}</option>
+              {choices.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="mb-address">Mailbox address *</label>
-          <input id="mb-address" className="input" type="email" value={address} onChange={(e) => onAddress(e.target.value)} placeholder="sales@yourbrand.com" required />
+          <input id="mb-address" className="input" type="email" value={address} onChange={(e) => onAddress(e.target.value)} placeholder="riley@yourbrand.com" required />
         </div>
         <div>
           <label className="label" htmlFor="mb-from">Sender name</label>
-          <input id="mb-from" className="input" value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder={brand.name} maxLength={120} />
+          <input id="mb-from" className="input" value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Their name · the brand" maxLength={120} />
         </div>
         <div>
-          <label className="label" htmlFor="mb-password">Password {brand.connected ? "" : "*"}</label>
+          <label className="label" htmlFor="mb-password">Password {mailbox ? "" : "*"}</label>
           <input
             id="mb-password"
             className="input"
@@ -160,8 +252,8 @@ function MailboxForm({ brand, onClose }: { brand: MailboxRow; onClose: () => voi
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={brand.connected ? "Saved. Leave blank to keep it." : "The mailbox password"}
-            required={!brand.connected}
+            placeholder={mailbox ? "Saved. Leave blank to keep it." : "The mailbox password"}
+            required={!mailbox}
           />
         </div>
         <div>
@@ -197,7 +289,7 @@ function MailboxForm({ brand, onClose }: { brand: MailboxRow; onClose: () => voi
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <div className="flex flex-wrap items-center gap-2">
-        {brand.connected ? (
+        {mailbox ? (
           <button type="button" className="btn-ghost btn-sm text-red-600" onClick={() => void disconnect()}>
             <Unplug className="h-3.5 w-3.5" />
             Disconnect

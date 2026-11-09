@@ -96,8 +96,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/billing/reload-settings', [BillingController::class, 'reloadSettings']);
     Route::get('/admin/payments', [PaymentSettingsController::class, 'index']);
     Route::get('/admin/mailboxes', [MailboxController::class, 'index']);
-    Route::patch('/admin/brands/{id}/mailbox', [MailboxController::class, 'update'])->whereNumber('id')->middleware('throttle:10,1');
-    Route::delete('/admin/brands/{id}/mailbox', [MailboxController::class, 'destroy'])->whereNumber('id');
+    Route::post('/admin/mailboxes', [MailboxController::class, 'store'])->middleware('throttle:10,1');
+    Route::patch('/admin/mailboxes/{id}', [MailboxController::class, 'update'])->whereNumber('id')->middleware('throttle:10,1');
+    Route::delete('/admin/mailboxes/{id}', [MailboxController::class, 'destroy'])->whereNumber('id');
     Route::post('/leads/{id}/reveal', [ContactController::class, 'reveal'])->whereNumber('id')->middleware('throttle:60,1');
     Route::post('/leads/{id}/emails', [ContactController::class, 'sendEmail'])->whereNumber('id')->middleware('throttle:20,1');
     Route::post('/invoices/{id}/email', [InvoiceController::class, 'emailClient'])->whereNumber('id')->middleware('throttle:20,1');
