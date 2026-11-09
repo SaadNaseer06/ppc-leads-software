@@ -3,6 +3,7 @@
 namespace App\Events;
 
 use App\Models\ConversationMessage;
+use App\Services\ContactMask;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -47,6 +48,7 @@ class ChatMessageSent implements ShouldBroadcastNow
         $row = $conversation?->toInboxRow();
         if ($row) {
             $row['last_message'] = mb_substr((string) $row['last_message'], 0, 200);
+            $row['visitor_email'] = ContactMask::email($row['visitor_email'] ?? null);
         }
 
         return [

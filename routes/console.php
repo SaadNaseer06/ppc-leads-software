@@ -11,3 +11,5 @@ Artisan::command('chats:close-idle', function (NativeChatService $chats) {
 // Runs from one cPanel cron job: * * * * * php /path/to/artisan schedule:run
 Schedule::command('model:prune')->daily()->at('03:15');
 Schedule::command('chats:close-idle')->everyTenMinutes();
+// Replies from clients, from each brand's mailbox
+Schedule::command('ppc:fetch-mail')->everyMinute()->withoutOverlapping(10);

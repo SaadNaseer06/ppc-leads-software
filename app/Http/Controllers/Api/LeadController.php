@@ -7,10 +7,14 @@ use App\Enums\LeadStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\LeadRowResource;
 use App\Models\ActivityLog;
+use App\Models\Brand;
 use App\Models\Lead;
 use App\Models\LeadActivity;
+use App\Models\LeadEmail;
 use App\Models\User;
 use App\Models\Website;
+use App\Services\BrandMailbox;
+use App\Services\ContactMask;
 use App\Services\LeadAssignment;
 use App\Services\LeadDeletion;
 use App\Services\LeadIntake;
@@ -93,6 +97,8 @@ class LeadController extends Controller
             ->latest('started_at')->limit(5)->get();
 
         $unpaid = $lead->hasUnpaidInvoice();
+        $mask = ! $user->seesFullContacts();
+        $fields = $lead->metadata['fields'] ?? [];
 
         return response()->json([
             'lead' => [
@@ -102,7 +108,14 @@ class LeadController extends Controller
                     'landing_page', 'page_url', 'referrer', 'form_name', 'ip_address', 'submission_count',
                     'assigned_at', 'last_activity_at', 'created_at',
                 ]),
-                'fields' => $lead->metadata['fields'] ?? (object) [],
+                // Reps see enough to recognise the client; the rest takes a logged reveal
+                ...($mask ? [
+                    'email' => ContactMask::email($lead->email),
+                    'phone' => ContactMask::phone($lead->phone),
+                    'message' => ContactMask::text($lead->message),
+                ] : []),
+                'contact_masked' => $mask,
+                'fields' => $fields ? ($mask ? ContactMask::fields($fields) : $fields) : (object) [],
                 'device' => LeadText::device($lead->user_agent),
                 'brand' => $lead->brand,
                 'website' => $lead->website,
@@ -127,6 +140,10 @@ class LeadController extends Controller
                 : [],
             'assignees' => $team->assignable($user, $lead->brand_id, ! $unpaid),
             'unpaid_invoice' => $unpaid,
+            'emails' => $lead->emails()->with('user:id,name')->orderByDesc('sent_at')->orderByDesc('id')->limit(50)->get()
+                ->map(fn (LeadEmail $e) => ContactController::emailRow($e, $user))->values(),
+            // The brand relation above only carries its name: read the mail settings themselves
+            'mailbox' => app(BrandMailbox::class)->configured(Brand::find($lead->brand_id)),
         ]);
     }
 
@@ -155,6 +172,8 @@ class LeadController extends Controller
         }
 
         $contact = array_intersect_key($data, array_flip(['name', 'email', 'phone', 'company']));
+        // A rep's form still holds the masked version: that must never overwrite the real details
+        $contact = array_filter($contact, fn ($value) => ! ContactMask::isMasked($value));
         if ($contact) {
             $lead->refresh()->fill([
                 ...$contact,

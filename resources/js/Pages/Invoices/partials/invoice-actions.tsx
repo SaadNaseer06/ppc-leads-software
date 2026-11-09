@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { router, usePage } from "@inertiajs/react";
-import { Ban, CheckCircle2, CircleDollarSign, Download, ExternalLink, RotateCcw, Trash2 } from "lucide-react";
+import { Ban, CheckCircle2, CircleDollarSign, Download, ExternalLink, Mail, RotateCcw, Trash2 } from "lucide-react";
 import type { SharedProps } from "@/types";
 import { formatMoney } from "@/lib/format";
 import { ActionMenu } from "@/components/ui/action-menu";
@@ -78,6 +78,14 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceForActions }) {
     router.reload();
   }
 
+  async function emailClient() {
+    setBusy(true);
+    const res = await apiRequest(`/api/invoices/${invoice.id}/email`, { method: "POST", body: {} });
+    setBusy(false);
+    if (res.ok) toast.success(`${invoice.number} emailed to the client`);
+    else toast.error(res.error);
+  }
+
   async function markPaid() {
     const ok = await confirm({
       title: `Mark ${invoice.number} as paid?`,
@@ -149,6 +157,7 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceForActions }) {
               ? [{ label: "View as client", icon: <ExternalLink className={icon} />, onSelect: () => void window.open(invoice.pay_url!, "_blank", "noopener") }]
               : []),
             { label: "Download PDF", icon: <Download className={icon} />, onSelect: () => window.location.assign(`/api/invoices/${invoice.id}/pdf`) },
+            ...(open ? [{ label: "Email to client", icon: <Mail className={icon} />, onSelect: () => void emailClient(), disabled: busy }] : []),
           ],
           can.manage_invoices
             ? [

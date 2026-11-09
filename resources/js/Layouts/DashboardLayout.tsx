@@ -4,6 +4,7 @@ import { navItemsFor } from "@/lib/rbac";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { LiveProvider } from "@/components/app-shell/live-provider";
 import type { SharedProps } from "@/types";
+import { Watermark } from "@/components/app-shell/watermark";
 
 /** Persistent shell: stays mounted between pages, so the live poller keeps running */
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -26,6 +27,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         ) : null}
         <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        {user.can.see_contacts ? null : <Watermark name={user.name} email={user.email} />}
       </div>
     </LiveProvider>
   );

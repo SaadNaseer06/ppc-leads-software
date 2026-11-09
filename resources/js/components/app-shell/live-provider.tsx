@@ -203,6 +203,9 @@ export function LiveProvider({
       void poll();
     };
     echo.private(`leads.user.${user.id}`).listen(".ChatTransferred", onChatSent);
+    echo.private(`leads.user.${user.id}`).listen(".LeadEmailReceived", (payload: { name?: string }) =>
+      toastRef.current.success(`New email from ${payload.name ?? "a lead"}`)
+    );
     return () => {
       connection.unbind("state_change", onState);
       for (const name of names) echo.leave(name);

@@ -40,6 +40,13 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
   PDF and pay by card on the page, or read your payment instructions. Part payments, paid and cancelled invoices are
   tracked on the Finance page and the lead's timeline. Admins and Brand Managers can delete invoices: the link stops
   working and the invoice leaves all totals, but the record stays in the database and its number is never reused.
+- **Contact privacy.** Sales reps and chat agents see clients' email and phone masked (`g•••@gmail.com`,
+  `+• ••• •••-•821`), everywhere and in the API. They reveal a lead's details one at a time: each reveal is logged on the
+  Contact log page, with a daily limit (`CONTACT_REVEAL_DAILY_LIMIT`, 30 by default). Their screens carry a faint
+  watermark with their name. Admins, Brand Managers, Finance and Super Admins see everything.
+- **Email.** A Super Admin connects each brand's mailbox (for example `sales@` on cPanel webmail) on the Email page.
+  The team emails leads from the lead page without seeing the address, and clients' replies are filed on the lead
+  within a minute. Invoices can be emailed from the brand's mailbox too.
 - **Card payments per brand.** A Super Admin adds a brand's merchant name and Stripe keys on the Payments page
   in the sidebar. Stripe checks the key before it's saved, secrets are stored encrypted, and each brand's money goes to
   its own Stripe account. Brands with no keys of their own use `STRIPE_*` from `.env`, if set.

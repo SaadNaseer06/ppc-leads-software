@@ -14,6 +14,7 @@ export type Permission =
   | "manage_invoices"
   | "delete_invoices"
   | "manage_payments"
+  | "see_contacts"
   | "view_finance"
   | "view_reports"
   | "manage_websites"

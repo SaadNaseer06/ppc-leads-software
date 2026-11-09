@@ -69,6 +69,8 @@ export type LeadActivity = {
 
 export type LeadDetail = {
   lead: {
+    /** Email, phone and enquiry are masked for this viewer until revealed */
+    contact_masked?: boolean;
     id: number;
     name: string;
     email: string | null;
@@ -116,6 +118,9 @@ export type LeadDetail = {
   assignees: Assignee[];
   /** An invoice still to be paid keeps the lead with Front Sales */
   unpaid_invoice: boolean;
+  emails: LeadEmailRow[];
+  /** The brand has a mailbox connected, so the lead can be emailed from the app */
+  mailbox: boolean;
 };
 
 export type DashboardData = {
@@ -436,4 +441,39 @@ export type SalesReportData = {
   by_rep: SalesBreakdownRow[];
   by_channel: SalesBreakdownRow[];
   by_campaign: SalesBreakdownRow[];
+};
+
+export type LeadEmailRow = {
+  id: number;
+  direction: "in" | "out";
+  from_email: string;
+  from_name: string | null;
+  to_email: string;
+  subject: string;
+  body: string;
+  sent_at: string;
+  /** Who on the team sent it */
+  sender: string | null;
+};
+
+export type MailboxRow = {
+  id: number;
+  name: string;
+  connected: boolean;
+  address: string | null;
+  from_name: string | null;
+  host: string | null;
+  imap_port: number | null;
+  smtp_port: number | null;
+  username: string | null;
+  checked_at: string | null;
+  error: string | null;
+};
+
+export type MailboxesData = { brands: MailboxRow[] };
+
+export type ContactLogData = {
+  limit: number;
+  people: { id: number; name: string; role: string | null; today: number; week: number; limit_hits: number }[];
+  recent: { id: number; user: string | null; lead: Ref | null; reason: string | null; at: string }[];
 };

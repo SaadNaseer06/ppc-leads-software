@@ -79,6 +79,11 @@ class Lead extends Model
         return self::idsWithUnpaidInvoice([$this->id]) !== [];
     }
 
+    public function emails(): HasMany
+    {
+        return $this->hasMany(LeadEmail::class);
+    }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);

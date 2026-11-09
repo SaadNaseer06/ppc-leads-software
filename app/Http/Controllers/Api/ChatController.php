@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\User;
+use App\Services\ContactMask;
 use App\Services\NativeChatService;
 use App\Services\TeamDirectory;
 use App\Support\Realtime;
@@ -60,10 +61,14 @@ class ChatController extends Controller
 
         $openCount = Conversation::query()->visibleTo($user)->live()->count();
 
+        // Chat agents and reps see visitors' email addresses masked, like every other contact detail
+        $mask = ! $user->seesFullContacts();
+        $hide = fn (array $row) => $mask && array_key_exists('visitor_email', $row) ? [...$row, 'visitor_email' => ContactMask::email($row['visitor_email'])] : $row;
+
         return response()->json([
-            'conversations' => $rows->map(fn (Conversation $c) => $this->row($c)),
+            'conversations' => $rows->map(fn (Conversation $c) => $hide($this->row($c))),
             'has_more' => $hasMore,
-            'selected' => $selected ? [
+            'selected' => $selected ? $hide([
                 ...$this->row($selected),
                 ...$selected->only(['visitor_name', 'visitor_email', 'city', 'country', 'subject', 'started_at', 'website_id', 'brand_id', 'page_url']),
                 'messages' => $selected->messages->map->only(['id', 'sender_type', 'sender_name', 'body', 'sent_at']),
@@ -82,7 +87,7 @@ class ChatController extends Controller
                     'at' => $selected->transferred_at,
                     'note' => $selected->transfer_note,
                 ] : null,
-            ] : null,
+            ]) : null,
             'assignees' => $assignees,
             // Who this chat can be handed to
             'front_sales' => ($user->canOverseeBrandChats() && $selected?->brand_id) ? $this->team->frontSales($selected->brand_id) : [],

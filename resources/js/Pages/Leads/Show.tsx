@@ -1,5 +1,5 @@
 import { Head, Link, usePage } from "@inertiajs/react";
-import { ArrowLeft, ExternalLink, Mail, MessageSquare, Phone } from "lucide-react";
+import { ArrowLeft, ExternalLink, MessageSquare } from "lucide-react";
 import type { ChatMessage, LeadActivity, LeadDetail } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
 import { formatDateTime, formatMoney, formatRelative, formatTime } from "@/lib/format";
@@ -9,10 +9,11 @@ import { ChannelBadge, SourceBadge, StatusBadge } from "@/components/ui/badges";
 import { CopyButton } from "@/components/ui/copy-button";
 import { LeadActions, EditContactButton } from "./partials/lead-actions";
 import { NoteForm } from "./partials/note-form";
+import { ContactCard, EmailsCard } from "./partials/lead-contact";
 import { CreateInvoiceButton } from "../Invoices/partials/create-invoice-dialog";
 import { InvoiceStatusBadge } from "../Invoices/partials/invoice-actions";
 
-export default function LeadShow({ lead, activities, conversations, invoices, assignees, unpaid_invoice: unpaidInvoice }: LeadDetail) {
+export default function LeadShow({ lead, activities, conversations, invoices, assignees, unpaid_invoice: unpaidInvoice, emails, mailbox }: LeadDetail) {
   const user = usePage<SharedProps>().props.auth.user!;
   const now = new Date();
   const canWork = user.can.work_leads;
@@ -142,12 +143,10 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
                 />
               ) : null}
             </div>
-            <div className="space-y-3 p-4 text-sm">
-              <ContactRow icon={<Mail className="h-4 w-4" />} value={lead.email} href={lead.email ? `mailto:${lead.email}` : null} />
-              <ContactRow icon={<Phone className="h-4 w-4" />} value={lead.phone} href={lead.phone ? `tel:${lead.phone}` : null} />
-              {lead.company ? <p className="text-slate-700">{lead.company}</p> : null}
-            </div>
+            <ContactCard leadId={lead.id} initial={{ email: lead.email, phone: lead.phone }} masked={Boolean(lead.contact_masked)} company={lead.company} />
           </section>
+
+          <EmailsCard leadId={lead.id} emails={emails} mailbox={mailbox} hasEmail={Boolean(lead.email)} canSend={canWork} />
 
           <section className="card">
             <div className="card-header">
@@ -225,26 +224,6 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
           ) : null}
         </div>
       </div>
-    </div>
-  );
-}
-
-function ContactRow({ icon, value, href }: { icon: React.ReactNode; value: string | null; href: string | null }) {
-  if (!value) {
-    return (
-      <p className="flex items-center gap-2 text-slate-400">
-        {icon}
-        Not provided
-      </p>
-    );
-  }
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <a href={href ?? undefined} className="flex min-w-0 items-center gap-2 font-medium text-teal-700 hover:underline">
-        <span className="text-slate-400">{icon}</span>
-        <span className="truncate">{value}</span>
-      </a>
-      <CopyButton value={value} />
     </div>
   );
 }
@@ -345,6 +324,18 @@ function ActivityLine({ activity }: { activity: LeadActivity }) {
       );
     case "updated":
       return <p className="text-sm text-slate-600">{strong(who)} updated the contact details</p>;
+    case "email_out":
+      return (
+        <p className="text-sm text-slate-600">
+          {strong(who)} emailed the lead: {strong(String(d.subject ?? ""))}
+        </p>
+      );
+    case "email_in":
+      return (
+        <p className="text-sm text-slate-600">
+          The lead emailed: {strong(String(d.subject ?? ""))}
+        </p>
+      );
     case "invoice_deleted":
       return (
         <p className="text-sm text-slate-600">

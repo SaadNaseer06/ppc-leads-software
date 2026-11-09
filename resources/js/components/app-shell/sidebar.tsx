@@ -12,7 +12,7 @@ import {
   Users,
   UserCog,
   Wallet,
-  X, CreditCard } from "lucide-react";
+  X, CreditCard, Eye, Inbox } from "lucide-react";
 import type { NavItem, NavKey } from "@/lib/rbac";
 import { BrandMark } from "@/components/brand-mark";
 import { Avatar } from "@/components/ui/avatar";
@@ -29,6 +29,8 @@ const ICONS: Record<NavKey, React.ComponentType<{ className?: string }>> = {
   team: UserCog,
   brands: Building2,
   payments: CreditCard,
+  email: Inbox,
+  contact_log: Eye,
 };
 
 type Props = {

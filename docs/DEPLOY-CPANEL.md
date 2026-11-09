@@ -167,6 +167,22 @@ no keys of its own, with the webhook address `/api/webhooks/stripe`. Run `php ar
 
 **No card form on the invoice?** Open **Payments**: it shows each brand's status, and the Invoices page names any brand that can't take cards.
 
+## Connect a brand's mailbox (optional)
+
+The team can email leads from the app, and clients' replies show up on the lead.
+
+1. In cPanel, *Email Accounts*: create a mailbox per brand, for example `sales@yourbrand.com`. *Connect Devices* shows
+   its mail server name and ports.
+2. Sign in as a **Super Admin**, open **Email** in the sidebar and press **Connect** on the brand. Enter the address,
+   password and mail server (usually `mail.yourbrand.com`). Keep the ports at 993 and 465. The app logs in to check
+   before saving, and the password is stored encrypted.
+3. Replies are collected every minute by the cron job from step 6, so that job must be running. Mail that was already
+   in the inbox is left alone; only new emails from addresses that belong to a lead are filed.
+4. Make sure *Email Deliverability* in cPanel shows SPF and DKIM as valid for the domain, or emails may land in spam.
+
+Nothing extra needs installing: the app talks IMAP itself, without PHP's imap extension. If a mail server's certificate
+doesn't match its name, set `MAIL_VERIFY_CERTIFICATES=false` in `.env` (better: use the name the certificate covers).
+
 ## Connect a brand's own domain (optional)
 
 Invoice links can use a brand's address, such as `pay.yourbrand.com`, instead of this app's. Links stay on the app's

@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\MailboxController;
 use App\Http\Controllers\Api\PaymentSettingsController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\UserController;
@@ -91,6 +93,16 @@ class PageController extends Controller
     public function payments(): Response
     {
         return Inertia::render('Payments/Index', $this->payload(PaymentSettingsController::class, 'index'));
+    }
+
+    public function mailboxes(): Response
+    {
+        return Inertia::render('Email/Index', $this->payload(MailboxController::class, 'index'));
+    }
+
+    public function contactLog(): Response
+    {
+        return Inertia::render('ContactLog', $this->payload(ContactController::class, 'log'));
     }
 
     public function finance(): Response

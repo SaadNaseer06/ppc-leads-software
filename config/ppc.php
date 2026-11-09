@@ -6,6 +6,12 @@ return [
     // APP_TIMEZONE in frontend/.env so charts and dates agree.
     'report_timezone' => env('REPORT_TIMEZONE', 'UTC'),
 
+    // Leads whose full contact details each sales rep can see per day (counted per lead, from midnight)
+    'contact_reveal_daily_limit' => (int) env('CONTACT_REVEAL_DAILY_LIMIT', 30),
+
+    // Check mail servers' TLS certificates. Only turn off for a mail host whose certificate doesn't match its name.
+    'mail_verify_certificates' => (bool) env('MAIL_VERIFY_CERTIFICATES', true),
+
     // Shown on the client's invoice page, e.g. bank details. Use \n for new lines.
     'payment_instructions' => str_replace('\n', "\n", (string) env('PAYMENT_INSTRUCTIONS', '')),
 

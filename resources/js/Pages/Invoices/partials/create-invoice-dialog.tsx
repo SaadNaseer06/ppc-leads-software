@@ -5,19 +5,21 @@ import { formatMoney } from "@/lib/format";
 import type { BrandOption } from "@/lib/api-types";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Modal } from "@/components/ui/modal";
-import { apiRequest } from "@/components/ui/toast";
+import { apiRequest, useToast } from "@/components/ui/toast";
 
 type LeadBrand = { name: string; merchant_name?: string | null };
 type LeadOption = { id: number; name: string; email: string | null; phone?: string | null; company: string | null; brand?: LeadBrand | null };
 type Client = { name: string; email: string; phone: string; company: string; address: string };
 type Item = { key: number; label: string; quantity: string; unit_price: string };
 type Created = {
+  id: number;
   number: string;
   amount: string;
   currency: string;
   merchant_name: string;
   pay_url: string;
   card_payments: boolean;
+  mailbox: boolean;
   client: { name: string; email: string | null };
 };
 
@@ -445,14 +447,43 @@ function InvoiceReady({ invoice, onDone }: { invoice: Created; onDone: () => voi
           <ExternalLink className="h-3.5 w-3.5" />
           Preview
         </a>
-        <a className="btn-secondary btn-sm" href={`mailto:${invoice.client.email ?? ""}?subject=${subject}&body=${body}`}>
-          <Mail className="h-3.5 w-3.5" />
-          Email client
-        </a>
+        {invoice.mailbox && invoice.client.email ? (
+          <EmailClientButton invoiceId={invoice.id} />
+        ) : invoice.client.email && !invoice.client.email.includes("•") ? (
+          <a className="btn-secondary btn-sm" href={`mailto:${invoice.client.email}?subject=${subject}&body=${body}`}>
+            <Mail className="h-3.5 w-3.5" />
+            Email client
+          </a>
+        ) : null}
         <button type="button" className="btn-primary btn-sm ml-auto" onClick={onDone}>
           Done
         </button>
       </div>
     </div>
+  );
+}
+
+/** Sends the pay link from the brand's mailbox: the address never has to leave the server */
+export function EmailClientButton({ invoiceId, label = "Email client" }: { invoiceId: number; label?: string }) {
+  const toast = useToast();
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+
+  async function send() {
+    setState("sending");
+    const res = await apiRequest(`/api/invoices/${invoiceId}/email`, { method: "POST", body: {} });
+    if (!res.ok) {
+      setState("idle");
+      toast.error(res.error);
+      return;
+    }
+    setState("sent");
+    toast.success("Invoice emailed to the client");
+  }
+
+  return (
+    <button type="button" className="btn-secondary btn-sm" onClick={() => void send()} disabled={state !== "idle"}>
+      <Mail className="h-3.5 w-3.5" />
+      {state === "sending" ? "Sending…" : state === "sent" ? "Sent" : label}
+    </button>
   );
 }

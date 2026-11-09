@@ -34,5 +34,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/invoices', [PageController::class, 'invoices']);
     Route::get('/finance', [PageController::class, 'finance']);
     Route::get('/payments', [PageController::class, 'payments']);
+    Route::get('/email', [PageController::class, 'mailboxes']);
+    Route::get('/contact-log', [PageController::class, 'contactLog']);
     Route::get('/reports', [PageController::class, 'reports']);
 });

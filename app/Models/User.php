@@ -186,6 +186,15 @@ class User extends Authenticatable
         return $this->managesBrands();
     }
 
+    /**
+     * Sales reps and chat agents see clients' contact details masked, and reveal them one lead at a
+     * time (logged, with a daily limit). Everyone who runs or audits the business sees them in full.
+     */
+    public function seesFullContacts(): bool
+    {
+        return ! in_array($this->role, [Role::FrontSales, Role::UpSales, Role::ChatAgent], true);
+    }
+
     /** Stripe keys decide where clients' money goes, so this stays with the owner of the system */
     public function canManagePayments(): bool
     {

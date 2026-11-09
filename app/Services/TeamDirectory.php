@@ -102,6 +102,7 @@ class TeamDirectory
                 'assign_brand_managers' => $user->canAssignBrandManagers(),
                 'manage_brands' => $user->canManageBrands(),
                 'manage_payments' => $user->canManagePayments(),
+                'see_contacts' => $user->seesFullContacts(),
                 'export_leads' => $user->canAssignLeads(),
             ],
         ];

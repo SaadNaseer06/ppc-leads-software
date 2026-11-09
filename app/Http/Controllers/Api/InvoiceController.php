@@ -9,6 +9,8 @@ use App\Models\Invoice;
 use App\Models\Lead;
 use App\Models\PaymentTransaction;
 use App\Models\User;
+use App\Services\BrandMailbox;
+use App\Services\ContactMask;
 use App\Services\InvoicePayments;
 use App\Services\InvoicePdf;
 use App\Services\StripePayments;
@@ -20,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class InvoiceController extends Controller
 {
@@ -34,11 +37,19 @@ class InvoiceController extends Controller
         $user = $request->user();
         abort_unless($user->canViewInvoices(), 403);
 
+        $invoices = Invoice::query()->visibleTo($user)
+            ->with(['brand:id,name', 'lead:id,name', 'createdBy:id,name'])
+            ->withSum('payments as paid_total', 'amount')
+            ->latest()->limit(self::LIMIT)->get();
+        if (! $user->seesFullContacts()) {
+            $invoices->each(fn (Invoice $i) => $i->forceFill([
+                'client_email' => ContactMask::email($i->client_email),
+                'client_phone' => ContactMask::phone($i->client_phone),
+            ]));
+        }
+
         return response()->json([
-            'invoices' => Invoice::query()->visibleTo($user)
-                ->with(['brand:id,name', 'lead:id,name', 'createdBy:id,name'])
-                ->withSum('payments as paid_total', 'amount')
-                ->latest()->limit(self::LIMIT)->get(),
+            'invoices' => $invoices,
             'limit' => self::LIMIT,
             // The brands this person can bill under, for invoices with no lead
             'brands' => $user->canCreateInvoice() ? $this->billableBrands($user)->get(['id', 'name', 'merchant_name']) : [],
@@ -87,6 +98,12 @@ class InvoiceController extends Controller
         ]);
 
         $lead = isset($data['lead_id']) ? Lead::query()->visibleTo($user)->findOrFail($data['lead_id']) : null;
+        // A rep's form was filled from masked details: those fall back to the lead's real ones
+        foreach (['client_email', 'client_phone'] as $field) {
+            if (ContactMask::isMasked($data[$field] ?? null)) {
+                $data[$field] = null;
+            }
+        }
         $brand = $lead?->brand ?? $this->brandToBill($user, $data['brand_id'] ?? null);
         if (! $brand) {
             return response()->json(['error' => 'Choose which brand this invoice is from'], 422);
@@ -134,6 +151,7 @@ class InvoiceController extends Controller
             'merchant_name' => $invoice->merchant_name,
             'pay_url' => $invoice->pay_url,
             'card_payments' => $this->stripe->configured($brand),
+            'mailbox' => app(BrandMailbox::class)->configured($brand),
             'client' => ['name' => $invoice->client_name, 'email' => $invoice->client_email],
         ], 201);
     }
@@ -170,6 +188,34 @@ class InvoiceController extends Controller
             'paid' => $paid,
             'client' => $invoice->client_name,
         ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Sends the client their pay link from the brand's mailbox, so reps never need the address */
+    public function emailClient(Request $request, int $id, BrandMailbox $mailbox): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canViewInvoices(), 403);
+        $invoice = Invoice::query()->visibleTo($user)->with(['brand', 'lead'])->findOrFail($id);
+        if (! $invoice->client_email) {
+            return response()->json(['error' => 'This invoice has no client email address.'], 422);
+        }
+        if (! $mailbox->configured($invoice->brand)) {
+            return response()->json(['error' => "{$invoice->brand->name} has no mailbox connected yet. A Super Admin can connect one on the Email page."], 422);
+        }
+
+        $merchant = $invoice->merchantName();
+        $body = "Hi {$invoice->clientName()},\n\nHere is your invoice {$invoice->number} for {$invoice->money($invoice->balanceDue())}. "
+            ."You can view and pay it here:\n{$invoice->pay_url}\n\nThank you,\n{$merchant}";
+        try {
+            $mailbox->send($invoice->brand, $invoice->client_email, $invoice->clientName(), $invoice->lead, $user, "Invoice {$invoice->number} from {$merchant}", $body);
+        } catch (TransportExceptionInterface $e) {
+            report($e);
+
+            return response()->json(['error' => "The email couldn't be sent. The mailbox may need reconnecting on the Email page."], 503);
+        }
+        ActivityLog::record($user->id, 'invoice.email', 'Invoice', $invoice->id);
 
         return response()->json(['ok' => true]);
     }
