@@ -171,17 +171,33 @@ no keys of its own, with the webhook address `/api/webhooks/stripe`. Run `php ar
 
 Each rep emails leads from their own address on the brand's domain, and clients' replies show up on the lead.
 
-1. In cPanel, *Email Accounts*: create a mailbox for each rep on each brand they work, for example
-   `riley@yourbrand.com`. Optionally add a shared one such as `sales@yourbrand.com`: it is used by anyone on that brand
-   without a mailbox of their own. *Connect Devices* shows the mail server name and ports.
-2. **Keep the passwords yourself.** A rep who knows their password can open webmail and see clients' full email
-   addresses there, which the app keeps masked.
-3. Sign in as a **Super Admin**, open **Email** in the sidebar and press **Add mailbox**: pick the brand and the person
-   (or *Shared by the whole brand*), then enter the address, password and mail server (usually `mail.yourbrand.com`).
-   Keep the ports at 993 and 465. The app logs in to check before saving, and the password is stored encrypted.
-4. Replies are collected every minute by the cron job from step 6, so that job must be running. Mail already in an inbox
-   is left alone; only new emails from addresses that belong to a lead are filed, once, whichever mailbox they reach.
-5. Make sure *Email Deliverability* in cPanel shows SPF and DKIM as valid for the domain, or emails may land in spam.
+**Create mailboxes from the app (recommended).** Nobody has to visit cPanel per rep, and nobody ever learns a
+mailbox's password, so reps can't open webmail and read clients' full addresses there.
+
+1. In each cPanel account that hosts a brand's domain: *Security → Manage API Tokens → Create*. Copy the token (cPanel
+   shows it once). A token can manage the whole cPanel account, so give it only to the app.
+2. Sign in as a **Super Admin**, open **Email** in the sidebar and press **Add cPanel account**: enter the cPanel server
+   name (as in the cPanel address, without `https://` or `:2083`), the cPanel username and the token. The app reads
+   which mail domains the account hosts to prove the token works, and stores the token encrypted. Add one per cPanel
+   account; brands on different accounts or servers are fine.
+3. Press **Create mailbox**: pick the brand, who it belongs to (or *Shared by the whole brand*, used by anyone on that
+   brand without a mailbox of their own), the address and the domain. The app creates it in the right cPanel account
+   with a long random password and connects it.
+4. In a mailbox's **Edit** dialog: **Reset password** sets a new random one in cPanel and the app at once; **Disconnect**
+   stops the app using it but keeps it in cPanel with its mail; **Delete in cPanel** removes it from the server for good.
+   When a rep leaves, removing them from the app disconnects their mailbox and keeps it in cPanel, so mail isn't lost.
+5. Added a domain in cPanel later? Press **Refresh domains** on its account.
+
+**Connect an existing mailbox by hand** (for a brand whose domain isn't on cPanel, or a mailbox that already exists):
+press **Connect existing** and enter the address, password and mail server (usually `mail.yourbrand.com`, see *Email
+Accounts → Connect Devices* in cPanel). Keep the ports at 993 and 465 and keep the password to yourself. The app logs in
+to check before saving.
+
+Either way:
+
+- Replies are collected every minute by the cron job from step 6, so that job must be running. Mail already in an inbox
+  is left alone; only new emails from addresses that belong to a lead are filed, once, whichever mailbox they reach.
+- Make sure *Email Deliverability* in cPanel shows SPF and DKIM as valid for the domain, or emails may land in spam.
 
 Nothing extra needs installing: the app talks IMAP itself, without PHP's imap extension. If a mail server's certificate
 doesn't match its name, set `MAIL_VERIFY_CERTIFICATES=false` in `.env` (better: use the name the certificate covers).

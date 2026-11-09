@@ -1,0 +1,1 @@
+import{i as e}from"./app-CDdVbeyO.js";const o={name:"arrow-down-right",size:24,node:[["path",{d:"m7 7 10 10",key:"1fmybs"}],["path",{d:"M17 7v10H7",key:"6fjiku"}]]};o.node;const a=e(o);export{a as A};

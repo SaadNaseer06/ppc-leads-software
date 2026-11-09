@@ -28,6 +28,11 @@ class Mailbox extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function cpanelAccount(): BelongsTo
+    {
+        return $this->belongsTo(CpanelAccount::class);
+    }
+
     /**
      * The address a person sends from for a brand: their own, or else the brand's shared one.
      */

@@ -471,11 +471,16 @@ export type MailboxRow = {
   username: string | null;
   checked_at: string | null;
   error: string | null;
+  /** Created by the app in cPanel: its password is known only to the app */
+  managed: boolean;
 };
+
+export type CpanelAccountRow = { id: number; host: string; username: string; checked_at: string | null; domains: string[] };
 
 export type MailboxesData = {
   mailboxes: MailboxRow[];
   brands: Ref[];
+  cpanel_accounts: CpanelAccountRow[];
   people: { id: number; name: string; role: string; brand_ids: number[] }[];
 };
 
