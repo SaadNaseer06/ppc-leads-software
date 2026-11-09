@@ -146,7 +146,7 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
             <ContactCard leadId={lead.id} initial={{ email: lead.email, phone: lead.phone }} masked={Boolean(lead.contact_masked)} company={lead.company} />
           </section>
 
-          <EmailsCard leadId={lead.id} emails={emails} mailbox={mailbox} hasEmail={Boolean(lead.email)} canSend={canWork} />
+          <EmailsCard leadId={lead.id} leadName={lead.name || "this lead"} emails={emails} mailbox={mailbox} hasEmail={Boolean(lead.email)} canSend={canWork} />
 
           <section className="card">
             <div className="card-header">

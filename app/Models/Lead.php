@@ -19,6 +19,9 @@ class Lead extends Model
             'last_activity_at' => 'datetime',
             'promoted_at' => 'datetime',
             'submission_count' => 'integer',
+            'last_email_at' => 'datetime',
+            'email_unread' => 'boolean',
+            'email_needs_reply' => 'boolean',
         ];
     }
 
@@ -82,6 +85,38 @@ class Lead extends Model
     public function emails(): HasMany
     {
         return $this->hasMany(LeadEmail::class);
+    }
+
+    /**
+     * Moves the email conversation on: a client's email is unread and waiting for an answer; one from
+     * the team answers it (and whoever answered has clearly read it).
+     */
+    public function recordEmail(string $direction): void
+    {
+        $inbound = $direction === 'in';
+        $this->update([
+            'last_activity_at' => now(),
+            'last_email_at' => now(),
+            'email_unread' => $inbound,
+            'email_needs_reply' => $inbound,
+        ]);
+    }
+
+    /** The lead's own rep reading it clears "unread"; while nobody owns the lead, anyone working it does */
+    public function markEmailsReadBy(User $user): void
+    {
+        if ($this->email_unread && $user->canWorkLeads() && (int) ($this->assignee_id ?? $user->id) === $user->id) {
+            // Reading isn't a change to the lead: no events, and updated_at stays put
+            $this->newQuery()->toBase()->where('id', $this->id)->update(['email_unread' => false]);
+            $this->setAttribute('email_unread', false)->syncOriginalAttribute('email_unread');
+        }
+    }
+
+    /** Threads waiting on this person: on their own leads, or on leads nobody owns yet */
+    public function scopeEmailUnreadFor(Builder $query, User $user): Builder
+    {
+        return $query->where('leads.email_unread', true)
+            ->where(fn ($q) => $q->where('leads.assignee_id', $user->id)->orWhereNull('leads.assignee_id'));
     }
 
     public function invoices(): HasMany

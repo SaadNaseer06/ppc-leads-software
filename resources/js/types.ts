@@ -40,6 +40,8 @@ export type LiveCounts = {
   unassigned: number;
   my_new: number;
   active_chats: number;
+  /** Client emails waiting to be read, on this person's leads or leads nobody owns */
+  unread_emails: number;
 };
 
 /** Props every page receives (App\Http\Middleware\HandleInertiaRequests::share) */

@@ -7,6 +7,7 @@ export type NavKey =
   | "dashboard"
   | "leads"
   | "chats"
+  | "emails"
   | "invoices"
   | "finance"
   | "reports"
@@ -30,6 +31,7 @@ export function navItemsFor(user: CurrentUser): NavItem[] {
     items.push({ key: "leads", href: "/leads", label: "Leads", section: "main" });
   }
   if (can.view_chats) items.push({ key: "chats", href: "/chats", label: "Chats", section: "main" });
+  if (can.work_leads) items.push({ key: "emails", href: "/emails", label: "Emails", section: "main" });
   if (can.view_invoices) items.push({ key: "invoices", href: "/invoices", label: "Invoices", section: "main" });
   if (can.view_finance) items.push({ key: "finance", href: "/finance", label: "Finance", section: "main" });
   if (can.view_reports) items.push({ key: "reports", href: "/reports", label: "Reports", section: "main" });
@@ -37,7 +39,7 @@ export function navItemsFor(user: CurrentUser): NavItem[] {
   if (can.view_team) items.push({ key: "team", href: "/team", label: "Team", section: "admin" });
   if (can.assign_leads) items.push({ key: "brands", href: "/brands", label: "Brands & routing", section: "admin" });
   if (can.manage_payments) items.push({ key: "payments", href: "/payments", label: "Payments", section: "admin" });
-  if (can.manage_payments) items.push({ key: "email", href: "/email", label: "Email", section: "admin" });
+  if (can.manage_payments) items.push({ key: "email", href: "/email", label: "Mailboxes", section: "admin" });
   if (can.view_team) items.push({ key: "contact_log", href: "/contact-log", label: "Contact log", section: "admin" });
 
   return items;

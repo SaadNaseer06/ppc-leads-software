@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\EmailInboxController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\MailboxController;
@@ -93,6 +94,14 @@ class PageController extends Controller
     public function payments(): Response
     {
         return Inertia::render('Payments/Index', $this->payload(PaymentSettingsController::class, 'index'));
+    }
+
+    public function emails(Request $request): Response
+    {
+        return Inertia::render('Emails/Index', [
+            'inbox' => fn () => $this->payload(EmailInboxController::class, 'index'),
+            'query' => (object) array_filter($request->query(), 'is_string'),
+        ]);
     }
 
     public function mailboxes(): Response

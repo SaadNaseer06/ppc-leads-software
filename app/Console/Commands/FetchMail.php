@@ -21,7 +21,7 @@ class FetchMail extends Command
             try {
                 $this->line("{$mailbox->address}: {$mail->fetch($mailbox)} new");
             } catch (Throwable $e) {
-                // One broken mailbox never stops the others; the Email page shows what went wrong
+                // One broken mailbox never stops the others; the Mailboxes page shows what went wrong
                 $mailbox->forceFill(['checked_at' => now(), 'error' => Str::limit($e->getMessage(), 480)])->save();
                 $this->warn("{$mailbox->address}: {$e->getMessage()}");
             }

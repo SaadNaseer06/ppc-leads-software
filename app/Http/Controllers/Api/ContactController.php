@@ -47,7 +47,7 @@ class ContactController extends Controller
         }
         $mailbox = Mailbox::forSender($lead->brand_id, $user);
         if (! $mailbox) {
-            return response()->json(['error' => "You don't have a mailbox on {$lead->brand->name} yet. A Super Admin can connect one on the Email page."], 422);
+            return response()->json(['error' => "You don't have a mailbox on {$lead->brand->name} yet. A Super Admin can connect one on the Mailboxes page."], 422);
         }
         $inReplyTo = isset($data['reply_to_id'])
             ? LeadEmail::where('lead_id', $lead->id)->whereKey($data['reply_to_id'])->value('message_id')
@@ -58,7 +58,7 @@ class ContactController extends Controller
         } catch (TransportExceptionInterface $e) {
             report($e);
 
-            return response()->json(['error' => "The email couldn't be sent. The mailbox may need reconnecting on the Email page."], 503);
+            return response()->json(['error' => "The email couldn't be sent. The mailbox may need reconnecting on the Mailboxes page."], 503);
         }
 
         return response()->json(['email' => self::emailRow($email, $user)], 201);

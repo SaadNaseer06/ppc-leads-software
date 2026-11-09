@@ -22,7 +22,7 @@ type LiveValue = {
 };
 
 const LiveContext = createContext<LiveValue>({
-  counts: { new_leads: 0, unassigned: 0, my_new: 0, active_chats: 0 },
+  counts: { new_leads: 0, unassigned: 0, my_new: 0, active_chats: 0, unread_emails: 0 },
   sync: () => {},
   subscribe: () => () => {},
 });
@@ -133,7 +133,7 @@ export function LiveProvider({
       if (!res.ok) return;
       const data = await res.json();
       // Lead counts only: a chat ending or going quiet changes active_chats without a ping
-      const leads = `${data.new_leads}|${data.unassigned}|${data.my_new}`;
+      const leads = `${data.new_leads}|${data.unassigned}|${data.my_new}|${data.unread_emails}`;
       const changed = seen.current !== null && leads !== seen.current;
       if (changed) {
         lastChange.current = Date.now();
@@ -142,12 +142,13 @@ export function LiveProvider({
       // A screen that shows leads refreshes itself, so they no longer count as unseen
       const shown = screens.current.size > 0;
       if (shown && data.new_leads > 0) since.current = data.server_time;
-      seen.current = shown ? `0|${data.unassigned}|${data.my_new}` : leads;
+      seen.current = shown ? `0|${data.unassigned}|${data.my_new}|${data.unread_emails}` : leads;
       setCounts({
         new_leads: shown ? 0 : data.new_leads,
         unassigned: data.unassigned,
         my_new: data.my_new,
         active_chats: data.active_chats,
+        unread_emails: data.unread_emails ?? 0,
       });
       // A ping can mean a change the counts don't show (a status change, a reassignment)
       if (changed || fromPing) for (const onChange of screens.current) onChange();

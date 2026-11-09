@@ -456,6 +456,41 @@ export type LeadEmailRow = {
   sender: string | null;
 };
 
+export type EmailThreadRow = {
+  lead_id: number;
+  name: string;
+  brand: string | null;
+  assignee: string | null;
+  status: string;
+  last_email_at: string;
+  /** The client's latest email hasn't been opened by the lead's rep */
+  unread: boolean;
+  /** The client spoke last */
+  needs_reply: boolean;
+  subject: string;
+  snippet: string;
+  direction: "in" | "out" | null;
+  sender: string | null;
+  count: number;
+};
+
+export type EmailThreadDetail = {
+  lead: { id: number; name: string; email: string | null; brand: string | null; assignee: string | null; status: string; needs_reply: boolean };
+  /** Oldest first */
+  emails: LeadEmailRow[];
+  /** The address the viewer sends from on this lead's brand */
+  mailbox: string | null;
+  has_email: boolean;
+};
+
+export type EmailInboxData = {
+  threads: EmailThreadRow[];
+  has_more: boolean;
+  counts: { unread: number; needs_reply: number };
+  brands: Ref[];
+  selected: EmailThreadDetail | null;
+};
+
 export type MailboxRow = {
   id: number;
   brand_id: number;

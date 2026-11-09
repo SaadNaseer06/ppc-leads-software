@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\EmailInboxController;
 use App\Http\Controllers\Api\IntakeController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
@@ -106,6 +107,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::delete('/admin/cpanel-accounts/{id}', [MailboxController::class, 'destroyAccount'])->whereNumber('id');
     Route::post('/leads/{id}/reveal', [ContactController::class, 'reveal'])->whereNumber('id')->middleware('throttle:60,1');
     Route::post('/leads/{id}/emails', [ContactController::class, 'sendEmail'])->whereNumber('id')->middleware('throttle:20,1');
+    Route::get('/emails', [EmailInboxController::class, 'index']);
+    Route::get('/emails/{id}', [EmailInboxController::class, 'show'])->whereNumber('id');
     Route::post('/invoices/{id}/email', [InvoiceController::class, 'emailClient'])->whereNumber('id')->middleware('throttle:20,1');
     Route::get('/contact-log', [ContactController::class, 'log']);
     Route::patch('/admin/brands/{id}/payments', [PaymentSettingsController::class, 'update'])->whereNumber('id');

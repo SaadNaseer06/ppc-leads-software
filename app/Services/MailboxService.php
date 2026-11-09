@@ -111,7 +111,7 @@ class MailboxService
             'created_at' => now(),
         ]);
         $lead->activities()->create(['actor_id' => $sender?->id, 'type' => 'email_out', 'data' => ['subject' => $subject]]);
-        $lead->update(['last_activity_at' => now()]);
+        $lead->recordEmail('out');
 
         return $email;
     }
@@ -142,7 +142,13 @@ class MailboxService
                 if ($uid <= $last) {
                     continue;
                 }
-                $filed += $this->file($mailbox, $message) ? 1 : 0;
+                try {
+                    $filed += $this->file($mailbox, $message) ? 1 : 0;
+                } catch (Throwable $e) {
+                    // One email the app can't file never holds up every reply after it: it's reported and
+                    // stays in webmail, and the mailbox moves on
+                    report($e);
+                }
                 $last = max($last, $uid);
             }
 
@@ -178,7 +184,7 @@ class MailboxService
             return false;
         }
 
-        $body = $message->hasTextBody() ? $message->getTextBody() : trim(html_entity_decode(strip_tags((string) $message->getHTMLBody())));
+        $body = self::utf8($message->hasTextBody() ? $message->getTextBody() : trim(html_entity_decode(strip_tags((string) $message->getHTMLBody()))));
         $date = rescue(fn () => $message->getDate()->toDate(), null, false);
 
         LeadEmail::create([
@@ -187,9 +193,9 @@ class MailboxService
             'mailbox_id' => $mailbox->id,
             'direction' => 'in',
             'from_email' => $address,
-            'from_name' => Str::limit((string) ($from?->personal ?? ''), 180, '') ?: null,
+            'from_name' => Str::limit(self::utf8((string) ($from?->personal ?? '')), 180, '') ?: null,
             'to_email' => $mailbox->address,
-            'subject' => Str::limit(trim((string) $message->getSubject()) ?: '(no subject)', 250, ''),
+            'subject' => Str::limit(trim(self::utf8((string) $message->getSubject())) ?: '(no subject)', 250, ''),
             // Plain text only: whatever HTML a sender puts in an email is never run in the app
             'body' => Str::limit(trim($body), 60000, ''),
             'message_id' => $messageId ?: null,
@@ -197,8 +203,8 @@ class MailboxService
             'sent_at' => $date ?? now(),
             'created_at' => now(),
         ]);
-        $lead->activities()->create(['type' => 'email_in', 'data' => ['subject' => Str::limit((string) $message->getSubject(), 180)]]);
-        $lead->update(['last_activity_at' => now()]);
+        $lead->activities()->create(['type' => 'email_in', 'data' => ['subject' => Str::limit(self::utf8((string) $message->getSubject()), 180)]]);
+        $lead->recordEmail('in');
         $this->live->leads($lead->brand_id, $lead->assignee_id);
         // The lead's rep hears about it, whichever address the client wrote to
         if ($lead->assignee_id) {
@@ -206,6 +212,17 @@ class MailboxService
         }
 
         return true;
+    }
+
+    /**
+     * Text as valid UTF-8. Mail that says one charset and is written in another (old mail apps, Outlook's
+     * Windows-1252) would otherwise be refused by the database.
+     */
+    public static function utf8(string $text): string
+    {
+        $text = str_replace(chr(0), '', $text);
+
+        return mb_check_encoding($text, 'UTF-8') ? $text : mb_convert_encoding($text, 'UTF-8', 'Windows-1252');
     }
 
     private function copyToSent(Mailbox $mailbox, string $raw): void
@@ -233,6 +250,8 @@ class MailboxService
             'password' => $mailbox->password,
             'timeout' => self::TIMEOUT,
             'verify_peer' => config('ppc.mail_verify_certificates'),
+            // Say hello as the brand's domain, not "[127.0.0.1]": spam filters read it in the headers
+            'local_domain' => Str::after($mailbox->address, '@'),
         ]);
     }
 

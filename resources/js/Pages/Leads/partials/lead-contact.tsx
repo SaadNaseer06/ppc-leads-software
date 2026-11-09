@@ -1,8 +1,8 @@
-import { FormEvent, useState } from "react";
-import { router } from "@inertiajs/react";
-import { ArrowDownLeft, ArrowUpRight, Eye, Mail, Phone, Reply, Send } from "lucide-react";
+import { useState } from "react";
+import { Link, router } from "@inertiajs/react";
+import { Eye, Mail, Maximize2, PenSquare, Phone } from "lucide-react";
 import type { LeadEmailRow } from "@/lib/api-types";
-import { formatDateTime } from "@/lib/format";
+import { EmailComposer, EmailThread, ReplyPrompt } from "@/components/email/email-thread";
 import { CopyButton } from "@/components/ui/copy-button";
 import { apiRequest, useToast } from "@/components/ui/toast";
 
@@ -77,122 +77,100 @@ function Row({ icon, value, href, copy }: { icon: React.ReactNode; value: string
   );
 }
 
-/** Emails with the lead, sent from and received into the brand's shared mailbox */
+/**
+ * The lead's email conversation, as in a mail app: the latest emails with the newest open, a reply box
+ * underneath, and the whole conversation one click away on the Emails page.
+ */
 export function EmailsCard({
   leadId,
+  leadName,
   emails,
   mailbox,
   hasEmail,
   canSend,
 }: {
   leadId: number;
+  leadName: string;
+  /** Newest first */
   emails: LeadEmailRow[];
   mailbox: string | null;
   hasEmail: boolean;
   canSend: boolean;
 }) {
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [replyTo, setReplyTo] = useState<LeadEmailRow | null>(null);
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  const [expanded, setExpanded] = useState<number | null>(emails[0]?.id ?? null);
+  const [composing, setComposing] = useState<"new" | "reply" | null>(null);
+  const thread = [...emails].reverse();
+  const shown = thread.slice(-3);
+  const earlier = thread.length - shown.length;
+  const latest = thread[thread.length - 1] ?? null;
+  const blocked = !mailbox ? "You don't have a mailbox on this brand yet. A Super Admin can create one on the Mailboxes page." : !hasEmail ? "This lead has no email address." : null;
+  const ready = canSend && !blocked && mailbox;
 
-  function compose(reply: LeadEmailRow | null) {
-    setReplyTo(reply);
-    setSubject(reply ? (/^re:/i.test(reply.subject) ? reply.subject : `Re: ${reply.subject}`) : "");
-    setBody("");
-    setError("");
-    setOpen(true);
+  function sent() {
+    setComposing(null);
+    router.reload({ only: ["emails", "activities", "lead"] });
   }
-
-  async function send(e: FormEvent) {
-    e.preventDefault();
-    setSending(true);
-    setError("");
-    const res = await apiRequest(`/api/leads/${leadId}/emails`, { method: "POST", body: { subject, body, reply_to_id: replyTo?.id ?? null } });
-    setSending(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    toast.success("Email sent");
-    setOpen(false);
-    router.reload();
-  }
-
-  const blocked = !mailbox ? "You don't have a mailbox on this brand yet. A Super Admin can connect one on the Email page." : !hasEmail ? "This lead has no email address." : null;
 
   return (
-    <section className="card">
+    <section className="card overflow-hidden">
       <div className="card-header">
-        <h2 className="card-title">Emails</h2>
-        {canSend && !blocked && !open ? (
-          <button type="button" className="btn-secondary btn-sm" onClick={() => compose(null)}>
-            <Send className="h-3.5 w-3.5" />
-            New email
-          </button>
-        ) : null}
+        <h2 className="card-title flex items-center gap-2">
+          Emails
+          {emails.length ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{emails.length}</span> : null}
+        </h2>
+        <div className="flex items-center gap-1">
+          {emails.length ? (
+            <Link href={`/emails?id=${leadId}`} className="btn-ghost btn-sm" title="Open the whole conversation">
+              <Maximize2 className="h-3.5 w-3.5" />
+              <span className="sr-only sm:not-sr-only">Open</span>
+            </Link>
+          ) : null}
+          {ready && composing === null ? (
+            <button type="button" className="btn-secondary btn-sm" onClick={() => setComposing("new")}>
+              <PenSquare className="h-3.5 w-3.5" />
+              New email
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      {open ? (
-        <form onSubmit={send} className="space-y-3 border-b border-slate-100 p-4">
-          <p className="text-xs text-slate-500">
-            From <span className="font-medium text-slate-700">{mailbox}</span>
-            {replyTo ? <> · replying to “{replyTo.subject}”</> : null}
-          </p>
-          <input className="input" placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} required aria-label="Subject" autoFocus={!replyTo} />
-          <textarea className="input" rows={6} placeholder="Write your message…" value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} required aria-label="Message" autoFocus={Boolean(replyTo)} />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <div className="flex justify-end gap-2">
-            <button type="button" className="btn-secondary btn-sm" onClick={() => setOpen(false)}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary btn-sm" disabled={sending}>
-              <Send className="h-3.5 w-3.5" />
-              {sending ? "Sending…" : "Send"}
-            </button>
-          </div>
-        </form>
+      {composing === "new" && mailbox ? (
+        <div className="border-b border-slate-100 bg-slate-50/50">
+          <EmailComposer compact leadId={leadId} leadName={leadName} mailbox={mailbox} replyTo={null} onSent={sent} onCancel={() => setComposing(null)} />
+        </div>
       ) : null}
 
       {emails.length === 0 ? (
-        <p className="p-4 text-sm text-slate-500">{blocked ?? "No emails yet. Replies from the client show up here automatically."}</p>
+        composing ? null : (
+          <div className="flex flex-col items-center px-6 py-7 text-center">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+              <Mail className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-slate-800">No emails yet</p>
+            <p className="mt-1 max-w-xs text-xs leading-relaxed text-slate-500">
+              {blocked ?? (canSend ? "Send the first one from your brand address. The client's replies show up here." : "Emails with this lead show up here.")}
+            </p>
+          </div>
+        )
       ) : (
-        <ul className="divide-y divide-slate-100">
-          {emails.map((email) => {
-            const inbound = email.direction === "in";
-            const isOpen = expanded === email.id;
-            return (
-              <li key={email.id} className="px-4 py-3">
-                <button type="button" className="flex w-full items-start gap-3 text-left" onClick={() => setExpanded(isOpen ? null : email.id)} aria-expanded={isOpen}>
-                  <span className={`mt-0.5 rounded-full p-1 ${inbound ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
-                    {inbound ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-900">{email.subject}</span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {inbound ? `From ${email.from_name || email.from_email}` : `Sent by ${email.sender ?? email.from_name ?? "the team"}`} · {formatDateTime(email.sent_at)}
-                    </span>
-                  </span>
-                </button>
-                {isOpen ? (
-                  <div className="mt-2 pl-9">
-                    <p className="whitespace-pre-wrap break-words rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{email.body}</p>
-                    {inbound && canSend && !blocked ? (
-                      <button type="button" className="btn-ghost btn-sm mt-1" onClick={() => compose(email)}>
-                        <Reply className="h-3.5 w-3.5" />
-                        Reply
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {earlier > 0 ? (
+            <Link href={`/emails?id=${leadId}`} className="block border-b border-slate-100 bg-slate-50/60 px-4 py-2 text-xs font-medium text-teal-700 hover:bg-slate-100/70">
+              {earlier} earlier email{earlier === 1 ? "" : "s"} · see the whole conversation
+            </Link>
+          ) : null}
+          <EmailThread emails={shown} leadName={leadName} compact />
+          {ready && latest ? (
+            <div className="border-t border-slate-100">
+              {composing === "reply" ? (
+                <EmailComposer compact leadId={leadId} leadName={leadName} mailbox={mailbox} replyTo={latest} onSent={sent} onCancel={() => setComposing(null)} />
+              ) : composing === null ? (
+                <ReplyPrompt compact leadName={leadName} onClick={() => setComposing("reply")} />
+              ) : null}
+            </div>
+          ) : blocked && canSend ? (
+            <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">{blocked}</p>
+          ) : null}
+        </>
       )}
     </section>
   );

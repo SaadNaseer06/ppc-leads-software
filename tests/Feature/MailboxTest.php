@@ -168,7 +168,7 @@ class MailboxTest extends TestCase
         $lead = $this->lead();
         $this->actingAs($this->rep);
         $this->postJson("/api/leads/{$lead->id}/emails", ['subject' => 'Hi', 'body' => 'Hi'])->assertUnprocessable()
-            ->assertJsonPath('error', "You don't have a mailbox on Hub yet. A Super Admin can connect one on the Email page.");
+            ->assertJsonPath('error', "You don't have a mailbox on Hub yet. A Super Admin can connect one on the Mailboxes page.");
 
         $this->mailbox($this->rep, 'riley@hub.test');
         $lead->update(['email' => null]);

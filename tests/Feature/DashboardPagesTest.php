@@ -51,12 +51,18 @@ class DashboardPagesTest extends TestCase
             '/invoices' => ['Invoices', 'invoices'],
             '/finance' => ['Finance/Index', 'transactions'],
             '/reports' => ['Reports', 'totals'],
+            '/emails' => ['Emails/Index', 'inbox.threads'],
+            "/emails?id={$leadId}" => ['Emails/Index', 'inbox.selected.lead'],
+            '/email' => ['Email/Index', 'mailboxes'],
+            '/payments' => ['Payments/Index', 'brands'],
+            '/contact-log' => ['ContactLog', 'people'],
         ];
         foreach ($screens as $url => [$component, $prop]) {
             $this->get($url)->assertOk()->assertInertia(fn (Assert $p) => $p->component($component)
                 ->has($prop)
                 ->where('auth.user.can.assign_leads', true)
-                ->has('live.unassigned'));
+                ->has('live.unassigned')
+                ->has('live.unread_emails'));
         }
     }
 

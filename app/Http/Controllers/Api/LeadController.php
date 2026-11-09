@@ -87,6 +87,7 @@ class LeadController extends Controller
         $lead = Lead::query()->visibleTo($user)
             ->with(['brand:id,name,merchant_name', 'website:id,name,domain', 'assignee:id,name,email'])
             ->findOrFail($id);
+        $lead->markEmailsReadBy($user);
 
         $activities = $lead->activities()->with('actor:id,name')->latest('created_at')->latest('id')->limit(100)->get();
         $userIds = $activities->flatMap(fn (LeadActivity $a) => [$a->data['to_user_id'] ?? null, $a->data['from_user_id'] ?? null])->filter()->unique();

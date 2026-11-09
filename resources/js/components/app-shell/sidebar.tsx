@@ -12,7 +12,7 @@ import {
   Users,
   UserCog,
   Wallet,
-  X, CreditCard, Eye, Inbox } from "lucide-react";
+  X, CreditCard, Eye, Inbox, Mail } from "lucide-react";
 import type { NavItem, NavKey } from "@/lib/rbac";
 import { BrandMark } from "@/components/brand-mark";
 import { Avatar } from "@/components/ui/avatar";
@@ -22,6 +22,7 @@ const ICONS: Record<NavKey, React.ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard,
   leads: Users,
   chats: MessageSquare,
+  emails: Mail,
   invoices: FileText,
   finance: Wallet,
   reports: BarChart3,
@@ -135,6 +136,7 @@ function NavSection({ items, pathname, canAssign }: { items: NavItem[]; pathname
   const badges: Partial<Record<NavKey, number>> = {
     leads: canAssign ? live.unassigned : live.my_new,
     chats: live.active_chats,
+    emails: live.unread_emails,
   };
 
   return (

@@ -23,6 +23,10 @@ class LiveCounts
                 ? $this->capped(Lead::query()->visibleTo($user)->inInbox()->whereNull('assignee_id')->where('status', LeadStatus::New->value), 1000)
                 : 0,
             'my_new' => $this->capped(Lead::query()->inInbox()->where('assignee_id', $user->id)->where('status', LeadStatus::New->value), 1000),
+            // Client emails nobody has read yet, on this person's leads or leads nobody owns
+            'unread_emails' => $user->canWorkLeads()
+                ? $this->capped(Lead::query()->visibleTo($user)->emailUnreadFor($user), 1000)
+                : 0,
             'active_chats' => $user->canViewChats()
                 ? $this->capped(Conversation::query()->visibleTo($user)->live(), 1000)
                 : 0,

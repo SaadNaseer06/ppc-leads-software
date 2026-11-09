@@ -46,7 +46,9 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
   watermark with their name. Admins, Brand Managers, Finance and Super Admins see everything.
 - **Email.** On the Email page, a Super Admin creates each rep's mailbox on the brand's domain (for example
   `riley@yourbrand.com`) straight in cPanel through its API, with a random password nobody sees; brands on several
-  cPanel accounts are supported, and mailboxes elsewhere can be connected by hand. A brand can also have a shared one. Reps email leads from the lead page without
+  cPanel accounts are supported, and mailboxes elsewhere can be connected by hand. A brand can also have a shared one.
+  Every conversation is on the **Emails** page (one per lead, newest first, Unread and Needs reply filters, an unread
+  badge in the sidebar) and on the lead's page, with quoted history folded away and replies sent from either place. Reps email leads from the lead page without
   seeing the address, and clients' replies are filed on the lead within a minute. Invoices can be emailed too.
 - **Card payments per brand.** A Super Admin adds a brand's merchant name and Stripe keys on the Payments page
   in the sidebar. Stripe checks the key before it's saved, secrets are stored encrypted, and each brand's money goes to

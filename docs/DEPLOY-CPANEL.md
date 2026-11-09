@@ -127,9 +127,15 @@ If `php` is an older version in Terminal, call the one your domain uses, e.g. `/
 /usr/local/bin/php /home/cpuser/ppc-leads/artisan schedule:run >> /dev/null 2>&1
 ```
 
-Every 10 minutes it closes live chats whose visitor has gone quiet for 3 hours (so the "live" chat counts stay
-accurate), and once a day it deletes webhook and audit logs older than 90 days. The app works without it, but
-abandoned chats then stay open and the log tables keep growing.
+Every minute it collects clients' email replies from the connected mailboxes and files them on the lead. Every 10
+minutes it closes live chats whose visitor has gone quiet for 3 hours (so the "live" chat counts stay accurate), and
+once a day it deletes webhook and audit logs older than 90 days. Without it, email replies never reach the app,
+abandoned chats stay open and the log tables keep growing.
+
+Replace `cpuser` with your cPanel username and `ppc-leads` with the folder the app is in (*File Manager* shows the full
+path at the top, for example `/home/cpuser/ppc-leads`). If the job doesn't seem to run, the PHP path may differ: in
+*Terminal*, `which php` shows it, or use the version-specific one, such as `/opt/cpanel/ea-php82/root/usr/bin/php`. To
+check it works: on the **Email** page, a mailbox's *Last checked* should stay at "just now" or "1m ago".
 
 ## 7. Check it
 

@@ -18,9 +18,9 @@ export default function EmailIndex({ mailboxes, brands, people, cpanel_accounts:
 
   return (
     <div className="space-y-5">
-      <Head title="Email" />
+      <Head title="Mailboxes" />
       <PageHeader
-        title="Email"
+        title="Mailboxes"
         description="Each rep emails leads from their own address on the brand's domain, and clients' replies are filed on the lead within a minute."
         actions={
           <div className="flex flex-wrap gap-2">
