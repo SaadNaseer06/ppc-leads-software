@@ -58,6 +58,27 @@ class Lead extends Model
         return $this->hasMany(Conversation::class);
     }
 
+    /**
+     * Leads with an invoice still waiting to be paid. Those stay with Front Sales: Up Sales only
+     * takes a client once the first deal is paid for.
+     *
+     * @param  list<int>  $ids
+     * @return list<int>
+     */
+    public static function idsWithUnpaidInvoice(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return Invoice::whereIn('lead_id', $ids)->where('status', 'sent')->distinct()->pluck('lead_id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    public function hasUnpaidInvoice(): bool
+    {
+        return self::idsWithUnpaidInvoice([$this->id]) !== [];
+    }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);

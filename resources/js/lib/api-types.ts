@@ -114,6 +114,8 @@ export type LeadDetail = {
     created_at: string;
   }[];
   assignees: Assignee[];
+  /** An invoice still to be paid keeps the lead with Front Sales */
+  unpaid_invoice: boolean;
 };
 
 export type DashboardData = {

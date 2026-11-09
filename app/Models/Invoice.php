@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Services\LeadAssignment;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -43,6 +44,12 @@ class Invoice extends Model
     {
         static::creating(function (Invoice $invoice) {
             $invoice->pay_token ??= Str::random(40);
+        });
+        // However it gets paid (card, a recorded payment, "mark as paid"), a converted lead can now go on to Up Sales
+        static::updated(function (Invoice $invoice) {
+            if ($invoice->wasChanged('status') && $invoice->status === 'paid') {
+                app(LeadAssignment::class)->handOffPaidLead($invoice);
+            }
         });
     }
 
@@ -167,7 +174,17 @@ class Invoice extends Model
             return $query->whereIn('invoices.brand_id', $user->brandIds());
         }
 
-        return $query->where('invoices.created_by_id', $user->id);
+        // Sales reps: invoices they raised, and invoices on leads assigned to them. Up Sales only
+        // sees those once paid: an unpaid invoice is still Front Sales' deal to close.
+        return $query->where(function (Builder $mine) use ($user) {
+            $mine->where('invoices.created_by_id', $user->id)
+                ->orWhere(function (Builder $theirLeads) use ($user) {
+                    $theirLeads->whereIn('invoices.lead_id', Lead::query()->select('id')->where('assignee_id', $user->id));
+                    if ($user->role === Role::UpSales) {
+                        $theirLeads->where('invoices.status', 'paid');
+                    }
+                });
+        });
     }
 
     /** Creates the invoice with the next INV-#### number, retrying if two requests race */

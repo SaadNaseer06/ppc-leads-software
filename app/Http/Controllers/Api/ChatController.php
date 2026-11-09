@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
+use App\Models\Lead;
 use App\Models\User;
 use App\Services\NativeChatService;
 use App\Services\TeamDirectory;
@@ -54,7 +55,7 @@ class ChatController extends Controller
             ->orderByDesc('sent_at')->orderByDesc('id')->limit(500)->get()->reverse()->values());
 
         $assignees = ($user->canAssignLeads() && $selected?->brand_id)
-            ? $this->team->assignable($user, $selected->brand_id)
+            ? $this->team->assignable($user, $selected->brand_id, ! ($selected->lead_id && Lead::idsWithUnpaidInvoice([(int) $selected->lead_id])))
             : [];
 
         $openCount = Conversation::query()->visibleTo($user)->live()->count();

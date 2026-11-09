@@ -16,10 +16,12 @@ class TeamDirectory
      *
      * @return list<array{id: int, name: string, role: string, role_label: string, open_leads: int, brand_ids: list<int>}>
      */
-    public function assignable(User $user, ?int $brandId = null): array
+    /** @param bool $upSales false for a lead with an unpaid invoice: Up Sales can't take it yet */
+    public function assignable(User $user, ?int $brandId = null, bool $upSales = true): array
     {
+        $roles = array_filter(Role::assignable(), fn (Role $r) => $upSales || $r !== Role::UpSales);
         $query = User::where('active', true)
-            ->whereIn('role', array_map(fn (Role $r) => $r->value, Role::assignable()))
+            ->whereIn('role', array_map(fn (Role $r) => $r->value, $roles))
             ->orderBy('name');
 
         if ($brandId !== null) {

@@ -6,6 +6,7 @@ use App\Enums\LeadStatus;
 use App\Enums\Role;
 use App\Models\ActivityLog;
 use App\Models\Brand;
+use App\Models\Invoice;
 use App\Models\Lead;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
@@ -42,6 +43,9 @@ class LeadAssignment
                 if ($leads->contains(fn (Lead $l) => ! in_array((int) $l->brand_id, $allowed, true))) {
                     throw new AssignmentException("Assignee does not have access to every selected lead's brand");
                 }
+            }
+            if ($assignee->role === Role::UpSales) {
+                $this->refuseUnpaid($leads->pluck('id')->map(fn ($id) => (int) $id)->all());
             }
         }
 
@@ -139,8 +143,13 @@ class LeadAssignment
             // Same hand-off as a single conversion, batched into one assignment per Up Sales rep
             $upSalesIds = User::where('role', Role::UpSales->value)->pluck('id')->map(fn ($id) => (int) $id)->all();
             $batches = [];
+            $unpaid = Lead::idsWithUnpaidInvoice($leads->pluck('id')->map(fn ($id) => (int) $id)->all());
             foreach ($leads as $lead) {
                 if ($lead->assignee_id && in_array((int) $lead->assignee_id, $upSalesIds, true)) {
+                    continue;
+                }
+                // Stays with Front Sales until its invoice is paid; handOffPaidLead() moves it then
+                if (in_array($lead->id, $unpaid, true)) {
                     continue;
                 }
                 if ($to = $this->nextUpSales((int) $lead->brand_id)) {
@@ -183,6 +192,11 @@ class LeadAssignment
         if ($lead->status === $status->value) {
             return;
         }
+        $unpaid = $status === LeadStatus::Converted && $lead->hasUnpaidInvoice();
+        // Checked before anything changes, so a refused hand-off leaves the lead as it was
+        if ($unpaid && $handoffUserId && User::find($handoffUserId)?->role === Role::UpSales) {
+            $this->refuseUnpaid([$lead->id]);
+        }
 
         DB::transaction(function () use ($lead, $status, $actorId) {
             $from = $lead->status;
@@ -198,11 +212,39 @@ class LeadAssignment
         if ($status === LeadStatus::Converted) {
             // A lead already with Up Sales stays with them unless someone else is picked
             $current = $lead->assignee_id ? User::find($lead->assignee_id) : null;
-            $toUserId = $handoffUserId ?? ($current?->role === Role::UpSales ? null : $this->nextUpSales((int) $lead->brand_id));
+            // With an invoice still unpaid it stays with Front Sales, and moves on once paid
+            $toUserId = $handoffUserId ?? ($current?->role === Role::UpSales || $unpaid ? null : $this->nextUpSales((int) $lead->brand_id));
             if ($toUserId) {
                 $this->assign([$lead->id], (int) $toUserId, $actorId, 'converted_handoff');
             }
         }
+    }
+
+    /** A converted lead whose last unpaid invoice was just paid goes on to Up Sales, as conversion would have */
+    public function handOffPaidLead(Invoice $invoice): void
+    {
+        $lead = $invoice->lead;
+        if (! $lead || $lead->status !== LeadStatus::Converted->value || $lead->hasUnpaidInvoice()) {
+            return;
+        }
+        if ($lead->assignee_id && User::find($lead->assignee_id)?->role === Role::UpSales) {
+            return;
+        }
+        if ($to = $this->nextUpSales((int) $lead->brand_id)) {
+            $this->assign([$lead->id], $to, null, 'paid_handoff');
+        }
+    }
+
+    /** @param list<int> $leadIds */
+    private function refuseUnpaid(array $leadIds): void
+    {
+        $blocked = Lead::idsWithUnpaidInvoice($leadIds);
+        if ($blocked === []) {
+            return;
+        }
+        throw new AssignmentException(count($leadIds) === 1
+            ? 'This lead has an unpaid invoice, so it stays with Front Sales until the invoice is paid.'
+            : count($blocked).' of the selected leads have unpaid invoices, so they stay with Front Sales until those are paid. Nothing was reassigned.');
     }
 
     /** Open leads of a deactivated user go back to the unassigned queue */

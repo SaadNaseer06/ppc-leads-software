@@ -12,7 +12,7 @@ import { NoteForm } from "./partials/note-form";
 import { CreateInvoiceButton } from "../Invoices/partials/create-invoice-dialog";
 import { InvoiceStatusBadge } from "../Invoices/partials/invoice-actions";
 
-export default function LeadShow({ lead, activities, conversations, invoices, assignees }: LeadDetail) {
+export default function LeadShow({ lead, activities, conversations, invoices, assignees, unpaid_invoice: unpaidInvoice }: LeadDetail) {
   const user = usePage<SharedProps>().props.auth.user!;
   const now = new Date();
   const canWork = user.can.work_leads;
@@ -56,6 +56,9 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
               canAssign={user.can.assign_leads}
               canDelete={user.can.delete_leads}
             />
+          ) : null}
+          {unpaidInvoice && user.can.assign_leads ? (
+            <p className="w-full text-xs text-amber-800">Unpaid invoice: this lead stays with Front Sales until it's paid, then moves on to Up Sales.</p>
           ) : null}
         </div>
       </div>
@@ -282,6 +285,7 @@ const REASONS: Record<string, string> = {
   user_deactivated: "user deactivated",
   bulk: "bulk action",
   chat_transfer: "chat sent to them",
+  paid_handoff: "invoice paid",
 };
 
 function ActivityLine({ activity }: { activity: LeadActivity }) {
