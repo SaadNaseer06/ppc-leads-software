@@ -14,7 +14,7 @@ class Brand extends Model
 {
     protected $fillable = [
         'name', 'slug', 'auto_assign_enabled', 'round_robin_last_user_id',
-        'merchant_name', 'brand_color', 'logo_path', 'billing_email', 'billing_address', 'pay_domain', 'pay_domain_verified_at',
+        'merchant_name', 'brand_color', 'logo_path', 'favicon_path', 'billing_email', 'billing_address', 'pay_domain', 'pay_domain_verified_at',
         'stripe_publishable_key', 'stripe_secret_key', 'stripe_webhook_secret', 'stripe_account_name',
     ];
 
@@ -40,6 +40,7 @@ class Brand extends Model
         static::deleted(function (Brand $brand) {
             self::$payHosts = null;
             $brand->forgetLogo();
+            $brand->forgetFavicon();
         });
     }
 
@@ -82,6 +83,19 @@ class Brand extends Model
         return "data:image/{$type};base64,".base64_encode($disk->get($file));
     }
 
+    /** The browser-tab icon on its invoice pages: its own favicon, or else its logo */
+    public function faviconUrl(): ?string
+    {
+        return $this->favicon_path ? "/{$this->favicon_path}" : $this->logoUrl();
+    }
+
+    public function forgetFavicon(): void
+    {
+        if ($this->favicon_path) {
+            Storage::disk('brand_logos')->delete(basename($this->favicon_path));
+        }
+    }
+
     public function forgetLogo(): void
     {
         if ($this->logo_path) {
@@ -95,6 +109,7 @@ class Brand extends Model
         return [
             ...$this->only(['merchant_name', 'brand_color', 'billing_email', 'billing_address', 'pay_domain']),
             'logo_url' => $this->logoUrl(),
+            'favicon_url' => $this->favicon_path ? "/{$this->favicon_path}" : null,
             'domain_connected' => $this->pay_domain_verified_at !== null,
         ];
     }

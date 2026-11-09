@@ -57,6 +57,8 @@ function BrandingForm({ brandId, brandName, branding, billing, canEditDomain, on
   const [address, setAddress] = useState(branding.billing_address ?? "");
   const [domain, setDomain] = useState(branding.pay_domain ?? "");
   const [logo, setLogo] = useState(branding.logo_url);
+  const [favicon, setFavicon] = useState(branding.favicon_url);
+  const faviconInput = useRef<HTMLInputElement>(null);
   const [connected, setConnected] = useState(branding.domain_connected);
   const [savedDomain, setSavedDomain] = useState(branding.pay_domain ?? "");
   const [error, setError] = useState("");
@@ -96,32 +98,35 @@ function BrandingForm({ brandId, brandName, branding, billing, canEditDomain, on
     onClose();
   }
 
-  async function uploadLogo(e: ChangeEvent<HTMLInputElement>) {
+  // Logo and favicon upload the same way, each to its own address
+  async function upload(kind: "logo" | "favicon", e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     setUploading(true);
     setError("");
     const body = new FormData();
-    body.append("logo", file);
-    const res = await fetch(`/api/admin/brands/${brandId}/logo`, { method: "POST", headers: apiHeaders(false), credentials: "same-origin", body });
+    body.append(kind, file);
+    const res = await fetch(`/api/admin/brands/${brandId}/${kind}`, { method: "POST", headers: apiHeaders(false), credentials: "same-origin", body });
     const data = await res.json().catch(() => ({}));
     setUploading(false);
     if (!res.ok) {
-      setError(data.error ?? "The logo couldn't be uploaded.");
+      setError(data.error ?? `The ${kind} couldn't be uploaded.`);
       return;
     }
-    setLogo(data.branding.logo_url);
+    if (kind === "logo") setLogo(data.branding.logo_url);
+    else setFavicon(data.branding.favicon_url);
     router.reload();
   }
 
-  async function removeLogo() {
-    const res = await apiRequest(`/api/admin/brands/${brandId}/logo`, { method: "DELETE" });
+  async function remove(kind: "logo" | "favicon") {
+    const res = await apiRequest(`/api/admin/brands/${brandId}/${kind}`, { method: "DELETE" });
     if (!res.ok) {
       setError(res.error);
       return;
     }
-    setLogo(null);
+    if (kind === "logo") setLogo(null);
+    else setFavicon(null);
     router.reload();
   }
 
@@ -161,7 +166,7 @@ function BrandingForm({ brandId, brandName, branding, billing, canEditDomain, on
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div>
           <span className="label">Logo</span>
           <div className="flex flex-wrap items-center gap-2">
@@ -170,14 +175,31 @@ function BrandingForm({ brandId, brandName, branding, billing, canEditDomain, on
               {uploading ? "Uploading…" : logo ? "Replace logo" : "Upload logo"}
             </button>
             {logo ? (
-              <button type="button" className="btn-ghost btn-sm text-red-600" onClick={() => void removeLogo()}>
+              <button type="button" className="btn-ghost btn-sm text-red-600" onClick={() => void remove("logo")}>
                 <Trash2 className="h-3.5 w-3.5" />
                 Remove
               </button>
             ) : null}
-            <input ref={fileInput} type="file" accept="image/png,image/jpeg" className="hidden" aria-label="Logo file" onChange={(e) => void uploadLogo(e)} />
+            <input ref={fileInput} type="file" accept="image/png,image/jpeg" className="hidden" aria-label="Logo file" onChange={(e) => void upload("logo", e)} />
           </div>
           <p className="mt-1.5 text-xs text-slate-500">PNG or JPG, under 1 MB.</p>
+        </div>
+        <div>
+          <span className="label">Favicon</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {favicon ? <img src={favicon} alt="" className="h-6 w-6 rounded border border-slate-200 object-contain" /> : null}
+            <button type="button" className="btn-secondary btn-sm" onClick={() => faviconInput.current?.click()} disabled={uploading}>
+              <Upload className="h-3.5 w-3.5" />
+              {favicon ? "Replace" : "Upload favicon"}
+            </button>
+            {favicon ? (
+              <button type="button" className="btn-ghost btn-sm text-red-600" onClick={() => void remove("favicon")} aria-label="Remove favicon">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            <input ref={faviconInput} type="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,.ico" className="hidden" aria-label="Favicon file" onChange={(e) => void upload("favicon", e)} />
+          </div>
+          <p className="mt-1.5 text-xs text-slate-500">The tab icon on invoices. Square PNG or ICO. Uses the logo if empty.</p>
         </div>
         <div>
           <label className="label" htmlFor="brand-color">Brand colour</label>

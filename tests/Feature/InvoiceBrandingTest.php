@@ -93,6 +93,45 @@ class InvoiceBrandingTest extends TestCase
             ->assertSee('--accent: #123456', false)->assertSee("/{$path}", false)->assertSee('billing@hub.test')->assertSee('1 Main St');
     }
 
+    public function test_a_brand_sets_the_invoice_tab_icon(): void
+    {
+        Storage::fake('brand_logos');
+        $brand = $this->brand();
+        $invoice = $this->invoice($brand);
+        $this->actingAs($this->user(Role::BrandManager, [$brand]));
+        $upload = fn ($file) => $this->post("/api/admin/brands/{$brand->id}/favicon", ['favicon' => $file], ['Accept' => 'application/json']);
+
+        // No favicon or logo: no icon tag at all
+        $this->get("/pay/{$invoice->pay_token}")->assertDontSee('rel="icon"', false);
+
+        // The logo stands in until there's a favicon
+        $this->post("/api/admin/brands/{$brand->id}/logo", ['logo' => UploadedFile::fake()->image('logo.png', 200, 80)], ['Accept' => 'application/json'])->assertCreated();
+        $this->get("/pay/{$invoice->pay_token}")->assertSee('<link rel="icon" href="/'.$brand->fresh()->logo_path.'">', false);
+
+        $upload(UploadedFile::fake()->createWithContent('icon.svg', '<svg onload="alert(1)"/>'))->assertUnprocessable();
+        $upload(UploadedFile::fake()->image('huge.png')->size(400))->assertUnprocessable();
+
+        // A real .ico file: the ICO header wrapping a 32x32 PNG
+        $source = UploadedFile::fake()->image('i.png', 32, 32);
+        $png = file_get_contents($source->getRealPath());
+        $ico = pack('vvv', 0, 1, 1).pack('CCCCvvVV', 32, 32, 0, 0, 1, 32, strlen($png), 22).$png;
+        $upload(UploadedFile::fake()->createWithContent('favicon.ico', $ico))->assertCreated();
+        $this->assertStringEndsWith('.ico', $brand->fresh()->favicon_path);
+
+        $upload(UploadedFile::fake()->image('icon.png', 64, 64))->assertCreated();
+        $first = $brand->fresh()->favicon_path;
+        $this->get("/pay/{$invoice->pay_token}")->assertSee('<link rel="icon" href="/'.$first.'">', false);
+
+        // Replacing removes the old file, removing falls back to the logo
+        $upload(UploadedFile::fake()->image('icon2.png', 32, 32))->assertCreated();
+        Storage::disk('brand_logos')->assertMissing(basename($first));
+        $this->deleteJson("/api/admin/brands/{$brand->id}/favicon")->assertOk()->assertJsonPath('branding.favicon_url', null);
+        $this->assertCount(1, Storage::disk('brand_logos')->files(), 'Only the logo is left');
+
+        $this->actingAs($this->user(Role::FrontSales, [$brand]));
+        $upload(UploadedFile::fake()->image('icon.png', 32, 32))->assertForbidden();
+    }
+
     public function test_any_brand_colour_stays_readable(): void
     {
         $this->assertSame('#0f172a', BrandTheme::from('#ffe600')['on_accent'], 'Dark text on a yellow brand');

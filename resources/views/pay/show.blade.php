@@ -31,8 +31,9 @@
 @section('title', "Invoice {$invoice->number} · {$merchant}")
 
 @section('head')
-    @if($brand->logoUrl())
-        <link rel="icon" href="{{ $brand->logoUrl() }}">
+    @if($brand->faviconUrl())
+        <link rel="icon" href="{{ $brand->faviconUrl() }}">
+        <link rel="apple-touch-icon" href="{{ $brand->faviconUrl() }}">
     @endif
     @if($cardForm)
         <script src="{{ config('services.stripe.js_url') }}"></script>

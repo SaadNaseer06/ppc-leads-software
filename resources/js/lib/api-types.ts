@@ -267,6 +267,7 @@ export type BrandBranding = {
   billing_address: string | null;
   pay_domain: string | null;
   logo_url: string | null;
+  favicon_url: string | null;
   domain_connected: boolean;
   card_payments?: boolean;
 };

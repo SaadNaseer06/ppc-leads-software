@@ -65,6 +65,35 @@ class BrandBrandingController extends Controller
         return response()->json(['branding' => $brand->branding()], 201);
     }
 
+    /** The small icon in the browser tab on the brand's invoice pages */
+    public function storeFavicon(Request $request, int $id): JsonResponse
+    {
+        $brand = $this->brand($request, $id);
+        // PNG or ICO only: no SVG, which can carry scripts
+        $request->validate(['favicon' => ['required', 'file', 'mimes:png,ico', 'max:256']], [
+            'favicon.mimes' => 'Use a PNG or ICO file',
+            'favicon.max' => 'The favicon must be under 256 KB',
+        ]);
+
+        $file = $request->file('favicon');
+        $name = "{$brand->id}-icon-".Str::random(12).".{$file->extension()}";
+        Storage::disk('brand_logos')->putFileAs('', $file, $name);
+        $brand->forgetFavicon();
+        $brand->update(['favicon_path' => "brand-logos/{$name}"]);
+        ActivityLog::record($request->user()->id, 'brand.favicon', 'Brand', $brand->id);
+
+        return response()->json(['branding' => $brand->branding()], 201);
+    }
+
+    public function destroyFavicon(Request $request, int $id): JsonResponse
+    {
+        $brand = $this->brand($request, $id);
+        $brand->forgetFavicon();
+        $brand->update(['favicon_path' => null]);
+
+        return response()->json(['branding' => $brand->branding()]);
+    }
+
     public function destroyLogo(Request $request, int $id): JsonResponse
     {
         $brand = $this->brand($request, $id);

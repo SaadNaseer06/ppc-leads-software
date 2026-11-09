@@ -83,6 +83,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::patch('/admin/brands/{id}/branding', [BrandBrandingController::class, 'update'])->whereNumber('id');
     Route::post('/admin/brands/{id}/logo', [BrandBrandingController::class, 'storeLogo'])->whereNumber('id');
     Route::delete('/admin/brands/{id}/logo', [BrandBrandingController::class, 'destroyLogo'])->whereNumber('id');
+    Route::post('/admin/brands/{id}/favicon', [BrandBrandingController::class, 'storeFavicon'])->whereNumber('id');
+    Route::delete('/admin/brands/{id}/favicon', [BrandBrandingController::class, 'destroyFavicon'])->whereNumber('id');
     Route::post('/admin/brands/{id}/domain-check', [BrandBrandingController::class, 'checkDomain'])->whereNumber('id');
 
     Route::get('/invoices', [InvoiceController::class, 'index']);
