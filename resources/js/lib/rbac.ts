@@ -12,7 +12,8 @@ export type NavKey =
   | "reports"
   | "websites"
   | "team"
-  | "brands";
+  | "brands"
+  | "payments";
 
 export type NavItem = { key: NavKey; href: string; label: string; section: "main" | "admin" };
 
@@ -33,6 +34,7 @@ export function navItemsFor(user: CurrentUser): NavItem[] {
   if (can.manage_websites) items.push({ key: "websites", href: "/websites", label: "Websites", section: "admin" });
   if (can.view_team) items.push({ key: "team", href: "/team", label: "Team", section: "admin" });
   if (can.assign_leads) items.push({ key: "brands", href: "/brands", label: "Brands & routing", section: "admin" });
+  if (can.manage_payments) items.push({ key: "payments", href: "/payments", label: "Payments", section: "admin" });
 
   return items;
 }

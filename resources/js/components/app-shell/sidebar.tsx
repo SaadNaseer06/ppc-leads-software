@@ -12,8 +12,7 @@ import {
   Users,
   UserCog,
   Wallet,
-  X,
-} from "lucide-react";
+  X, CreditCard } from "lucide-react";
 import type { NavItem, NavKey } from "@/lib/rbac";
 import { BrandMark } from "@/components/brand-mark";
 import { Avatar } from "@/components/ui/avatar";
@@ -29,6 +28,7 @@ const ICONS: Record<NavKey, React.ComponentType<{ className?: string }>> = {
   websites: Globe,
   team: UserCog,
   brands: Building2,
+  payments: CreditCard,
 };
 
 type Props = {

@@ -340,6 +340,12 @@ export type BillingStatus = {
   webhook: boolean;
 };
 
+export type PaymentsData = {
+  brands: BrandPayments[];
+  /** The .env fallback: names and yes/no only */
+  server: Omit<BillingStatus, "can_configure" | "brands">;
+};
+
 export type InvoicesData = { invoices: InvoiceRow[]; limit: number; brands: BrandOption[]; billing: BillingStatus | null };
 
 export type FinanceData = {

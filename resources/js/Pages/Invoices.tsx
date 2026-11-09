@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Head, Link, usePage } from "@inertiajs/react";
-import { CircleAlert, CreditCard, FileText } from "lucide-react";
+import { CircleAlert, FileText } from "lucide-react";
 import type { BillingStatus, InvoicesData } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
 import { formatCalendarDay, formatDate, formatMoney } from "@/lib/format";
@@ -8,11 +8,9 @@ import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { apiRequest, useToast } from "@/components/ui/toast";
 import { CreateInvoiceButton } from "./Invoices/partials/create-invoice-dialog";
 import { InvoiceActions, InvoiceStatusBadge, balanceDue } from "./Invoices/partials/invoice-actions";
-import { PaymentSettingsDialog } from "./Invoices/partials/payment-settings-dialog";
 
 export default function Invoices({ invoices, limit: LIMIT, brands, billing }: InvoicesData) {
   const user = usePage<SharedProps>().props.auth.user!;
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const createButton = user.can.create_invoice ? <CreateInvoiceButton brands={brands} /> : null;
 
   return (
@@ -25,21 +23,10 @@ export default function Invoices({ invoices, limit: LIMIT, brands, billing }: In
             ? `Create invoices, record payments and track what is still due. Showing the latest ${LIMIT}.`
             : `Invoices you have created. Showing the latest ${LIMIT}.`
         }
-        actions={
-          <div className="flex flex-wrap gap-2">
-            {billing?.can_configure ? (
-              <button type="button" className="btn-secondary" onClick={() => setSettingsOpen(true)}>
-                <CreditCard className="h-4 w-4" />
-                Payment settings
-              </button>
-            ) : null}
-            {createButton}
-          </div>
-        }
+        actions={createButton}
       />
 
-      {billing ? <CardPaymentsNotice billing={billing} canReload={user.can.manage_brands} onSetUp={() => setSettingsOpen(true)} /> : null}
-      {billing?.can_configure ? <PaymentSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} brands={billing.brands} /> : null}
+      {billing ? <CardPaymentsNotice billing={billing} canReload={user.can.manage_brands} /> : null}
 
       <div className="card overflow-hidden">
         {invoices.length === 0 ? (
@@ -105,7 +92,7 @@ export default function Invoices({ invoices, limit: LIMIT, brands, billing }: In
 const nameList = (names: string[]) => (names.length > 3 ? `${names.length} brands` : names.join(", ").replace(/, ([^,]*)$/, " and $1"));
 
 /** Says exactly which brands can't take cards and why, with the way to fix it right there */
-function CardPaymentsNotice({ billing, canReload, onSetUp }: { billing: BillingStatus; canReload: boolean; onSetUp: () => void }) {
+function CardPaymentsNotice({ billing, canReload }: { billing: BillingStatus; canReload: boolean }) {
   const toast = useToast();
   const [reloading, setReloading] = useState(false);
 
@@ -129,7 +116,7 @@ function CardPaymentsNotice({ billing, canReload, onSetUp }: { billing: BillingS
   } else if (off.length > 0) {
     message = billing.needs_reload
       ? `${nameList(off)} can't take card payments yet. The server's .env has Stripe keys, but the app is running on settings saved before they were added.`
-      : `${nameList(off)} can't take card payments yet.${billing.can_configure ? "" : " Ask a Super Admin to add the Stripe keys under Payment settings."}`;
+      : `${nameList(off)} can't take card payments yet.${billing.can_configure ? "" : " Ask a Super Admin to add the Stripe keys on the Payments page."}`;
   } else if (noWebhook.length > 0) {
     message = `Card payments are on, but ${nameList(noWebhook)} has no webhook. A payment won't be recorded if the client closes the page straight after paying.`;
   }
@@ -145,9 +132,9 @@ function CardPaymentsNotice({ billing, canReload, onSetUp }: { billing: BillingS
         </button>
       ) : null}
       {billing.can_configure ? (
-        <button type="button" className="btn-primary btn-sm" onClick={onSetUp}>
+        <Link href="/payments" className="btn-primary btn-sm">
           {off.length > 0 ? "Set up card payments" : "Add webhook"}
-        </button>
+        </Link>
       ) : null}
     </div>
   );

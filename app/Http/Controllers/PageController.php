@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\PaymentSettingsController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebsiteController;
@@ -85,6 +86,11 @@ class PageController extends Controller
     public function invoices(): Response
     {
         return Inertia::render('Invoices', $this->payload(InvoiceController::class, 'index'));
+    }
+
+    public function payments(): Response
+    {
+        return Inertia::render('Payments/Index', $this->payload(PaymentSettingsController::class, 'index'));
     }
 
     public function finance(): Response

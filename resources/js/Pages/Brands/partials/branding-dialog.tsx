@@ -254,7 +254,7 @@ function BrandingForm({ brandId, brandName, branding, billing, canEditDomain, on
       {!branding.card_payments ? (
         <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
           <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Card payments aren't on for this brand yet. A Super Admin can add its Stripe keys under Payment settings on the Invoices page.
+          Card payments aren't on for this brand yet. A Super Admin can add its Stripe keys on the Payments page.
         </p>
       ) : null}
 

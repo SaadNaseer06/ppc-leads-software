@@ -273,6 +273,33 @@ class PaymentSettingsTest extends TestCase
         $this->webhook('/api/webhooks/stripe/999999', ['id' => 'evt_4', 'type' => 'x'], 'whsec_env')->assertNotFound();
     }
 
+    public function test_the_payments_page_is_for_super_admins_only(): void
+    {
+        $brand = $this->connected();
+        $this->brand(['name' => 'Second']);
+
+        foreach ([Role::Developer, Role::Admin, Role::BrandManager, Role::Finance] as $role) {
+            $this->actingAs($this->user($role, [$brand]), 'web');
+            $this->get('/payments')->assertRedirect('/dashboard');
+            $this->actingAs($this->user($role, [$brand]));
+            $this->getJson('/api/admin/payments')->assertForbidden();
+        }
+
+        $owner = $this->user(Role::SuperAdmin);
+        $this->actingAs($owner, 'web');
+        $page = $this->get('/payments')->assertOk()->getContent();
+        $this->assertStringNotContainsString(self::SECRET, $page);
+        $this->assertStringNotContainsString(self::WEBHOOK, $page);
+
+        $this->actingAs($owner);
+        $this->getJson('/api/admin/payments')->assertOk()
+            ->assertJsonCount(2, 'brands')
+            ->assertJsonPath('brands.0.card_payments', true)
+            ->assertJsonPath('brands.0.secret_hint', '…1234')
+            ->assertJsonPath('brands.1.card_payments', false);
+        $this->getJson('/api/me')->assertJsonPath('user.can.manage_payments', true);
+    }
+
     public function test_disconnecting_stops_card_payments(): void
     {
         $brand = $this->connected();

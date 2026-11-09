@@ -99,6 +99,7 @@ class TeamDirectory
                 'view_team' => $user->canViewTeam(),
                 'assign_brand_managers' => $user->canAssignBrandManagers(),
                 'manage_brands' => $user->canManageBrands(),
+                'manage_payments' => $user->canManagePayments(),
                 'export_leads' => $user->canAssignLeads(),
             ],
         ];

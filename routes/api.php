@@ -90,6 +90,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::patch('/invoices/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
     Route::delete('/invoices/{id}', [InvoiceController::class, 'destroy'])->whereNumber('id');
     Route::post('/billing/reload-settings', [BillingController::class, 'reloadSettings']);
+    Route::get('/admin/payments', [PaymentSettingsController::class, 'index']);
     Route::patch('/admin/brands/{id}/payments', [PaymentSettingsController::class, 'update'])->whereNumber('id');
     Route::delete('/admin/brands/{id}/payments', [PaymentSettingsController::class, 'destroy'])->whereNumber('id');
     Route::post('/invoices/{id}/payments', [InvoiceController::class, 'storePayment'])->whereNumber('id');

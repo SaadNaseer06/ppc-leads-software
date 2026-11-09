@@ -19,6 +19,17 @@ class PaymentSettingsController extends Controller
 {
     public function __construct(private StripePayments $stripe) {}
 
+    /** The Payments page: every brand's merchant and Stripe account, and the server-wide fallback */
+    public function index(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->canManagePayments(), 403);
+
+        return response()->json([
+            'brands' => Brand::orderBy('name')->get()->map(fn (Brand $b) => $this->stripe->brandStatus($b, true))->values(),
+            'server' => $this->stripe->status(),
+        ]);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $brand = $this->brand($request, $id);

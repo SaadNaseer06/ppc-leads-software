@@ -40,8 +40,8 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
   PDF and pay by card on the page, or read your payment instructions. Part payments, paid and cancelled invoices are
   tracked on the Finance page and the lead's timeline. Admins and Brand Managers can delete invoices: the link stops
   working and the invoice leaves all totals, but the record stays in the database and its number is never reused.
-- **Card payments per brand.** A Super Admin adds a brand's merchant name and Stripe keys under Payment settings on the
-  Invoices page. Stripe checks the key before it's saved, secrets are stored encrypted, and each brand's money goes to
+- **Card payments per brand.** A Super Admin adds a brand's merchant name and Stripe keys on the Payments page
+  in the sidebar. Stripe checks the key before it's saved, secrets are stored encrypted, and each brand's money goes to
   its own Stripe account. Brands with no keys of their own use `STRIPE_*` from `.env`, if set.
 - **Brand-themed invoices.** Each brand sets its logo, colour, merchant name and contact details under Brands &
   routing, and its invoice pages and PDFs follow them. A brand can also connect its own domain for invoice links.

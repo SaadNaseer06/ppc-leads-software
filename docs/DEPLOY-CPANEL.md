@@ -142,14 +142,14 @@ abandoned chats then stay open and the log tables keep growing.
 Every invoice has a link clients open to view and pay it. The card form appears on that page once the brand has Stripe
 keys. Until then, the page shows `PAYMENT_INSTRUCTIONS` instead. Check first that Stripe supports your business's country.
 
-1. Sign in as a **Super Admin** and open **Invoices → Payment settings**. Only Super Admins see this, because these keys
+1. Sign in as a **Super Admin** and open **Payments** in the sidebar. Only Super Admins see this, because these keys
    decide where clients' money goes.
 2. Choose the brand and set its **merchant name**.
 3. From the [Stripe dashboard](https://dashboard.stripe.com/apikeys), paste the **publishable key** and **secret key**,
    then press **Save and connect**. Stripe checks the key before anything is saved, and the invoice page starts taking
    cards straight away. No file changes or restart are needed.
-4. Recommended: in Stripe, *Developers → Webhooks → Add endpoint*, using the address shown in **Payment settings** and the
-   event `payment_intent.succeeded`. Paste its signing secret (`whsec_…`) into **Payment settings**. A payment is then
+4. Recommended: in Stripe, *Developers → Webhooks → Add endpoint*, using the address shown for the brand on **Payments** and the
+   event `payment_intent.succeeded`. Paste its signing secret (`whsec_…`) into the brand on **Payments**. A payment is then
    recorded even if the client closes the page straight after paying.
 5. Use test keys first: raise a small invoice, open its link and pay with the card `4242 4242 4242 4242`. The page shows
    a *Test mode* note. The invoice should turn **Paid** and the payment should appear on the **Finance** page. Then
@@ -165,7 +165,7 @@ The name on a client's **card statement** comes from the Stripe account, not the
 no keys of its own, with the webhook address `/api/webhooks/stripe`. Run `php artisan optimize` afterwards, or press
 **Reload settings** on the Invoices page, because the app keeps its settings cached.
 
-**No card form on the invoice?** Open **Invoices**: a notice at the top names which brands can't take cards and why.
+**No card form on the invoice?** Open **Payments**: it shows each brand's status, and the Invoices page names any brand that can't take cards.
 
 ## Connect a brand's own domain (optional)
 
