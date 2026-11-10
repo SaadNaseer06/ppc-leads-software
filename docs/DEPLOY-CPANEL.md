@@ -204,6 +204,10 @@ Either way:
 - Replies are collected every minute by the cron job from step 6, so that job must be running. Mail already in an inbox
   is left alone; only new emails from addresses that belong to a lead are filed, once, whichever mailbox they reach.
 - Make sure *Email Deliverability* in cPanel shows SPF and DKIM as valid for the domain, or emails may land in spam.
+- Attachments: one email can carry up to 18 MB of files, but never more than PHP accepts in one upload. In
+  *MultiPHP INI Editor* set `upload_max_filesize` and `post_max_size` to at least `20M` (cPanel often starts at
+  `2M`, and then 2 MB is the most a rep can attach). Files sent and received are kept in `storage/app/private`,
+  never under `public_html`, and are deleted with their lead.
 
 Nothing extra needs installing: the app talks IMAP itself, without PHP's imap extension. If a mail server's certificate
 doesn't match its name, set `MAIL_VERIFY_CERTIFICATES=false` in `.env` (better: use the name the certificate covers).

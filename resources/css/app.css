@@ -319,3 +319,67 @@
     animation: none;
   }
 }
+
+/* A formatted email, and the editor that writes one: the same spacing, so what's sent looks as typed */
+.email-body,
+.email-editor {
+  overflow-wrap: anywhere;
+}
+
+.email-body p,
+.email-editor p {
+  margin: 0 0 0.75em;
+}
+
+.email-body > :last-child,
+.email-editor > :last-child {
+  margin-bottom: 0;
+}
+
+.email-body :is(ul, ol),
+.email-editor :is(ul, ol) {
+  margin: 0 0 0.75em;
+  padding-left: 1.4em;
+}
+
+.email-body ul,
+.email-editor ul {
+  list-style: disc;
+}
+
+.email-body ol,
+.email-editor ol {
+  list-style: decimal;
+}
+
+.email-body li p,
+.email-editor li p {
+  margin: 0;
+}
+
+.email-body li + li,
+.email-editor li + li {
+  margin-top: 0.2em;
+}
+
+.email-body a,
+.email-editor a {
+  color: #0f766e;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.email-body blockquote {
+  margin: 0 0 0.75em;
+  padding-left: 0.75em;
+  border-left: 2px solid #e2e8f0;
+  color: #64748b;
+}
+
+.email-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #94a3b8;
+  pointer-events: none;
+}

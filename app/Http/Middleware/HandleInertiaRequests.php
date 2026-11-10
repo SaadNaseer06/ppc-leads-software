@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\LeadEmailAttachment;
 use App\Services\LiveCounts;
 use App\Services\TeamDirectory;
 use App\Support\Realtime;
@@ -38,6 +39,8 @@ class HandleInertiaRequests extends Middleware
                 'timezone' => config('ppc.report_timezone'),
                 // Pusher settings for live badges and chats (null: the server doesn't broadcast)
                 'realtime' => Realtime::config(),
+                // The most a person can attach to one email, within what this server's PHP accepts
+                'attach_max' => LeadEmailAttachment::maxBytes(),
             ],
             // Starting values for the sidebar badges; the browser polls /api/live after that
             'live' => fn () => $user

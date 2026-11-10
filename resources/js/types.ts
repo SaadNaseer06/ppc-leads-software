@@ -47,6 +47,12 @@ export type LiveCounts = {
 /** Props every page receives (App\Http\Middleware\HandleInertiaRequests::share) */
 export type SharedProps = {
   auth: { user: CurrentUser | null };
-  app: { env: string; timezone: string; realtime: { key: string; cluster: string } | null };
+  app: {
+    env: string;
+    timezone: string;
+    realtime: { key: string; cluster: string } | null;
+    /** The most one email's attachments can add up to, in bytes */
+    attach_max: number;
+  };
   live: (LiveCounts & { server_time: string }) | null;
 };

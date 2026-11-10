@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\SessionController;
+use App\Http\Controllers\EmailAttachmentController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PayController;
 use Illuminate\Support\Facades\Route;
@@ -36,6 +37,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/payments', [PageController::class, 'payments']);
     Route::get('/email', [PageController::class, 'mailboxes']);
     Route::get('/emails', [PageController::class, 'emails']);
+    Route::get('/email-attachments/{id}', [EmailAttachmentController::class, 'show'])->whereNumber('id');
     Route::get('/contact-log', [PageController::class, 'contactLog']);
     Route::get('/reports', [PageController::class, 'reports']);
 });

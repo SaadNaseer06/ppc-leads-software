@@ -141,7 +141,7 @@ class LeadController extends Controller
                 : [],
             'assignees' => $team->assignable($user, $lead->brand_id, ! $unpaid),
             'unpaid_invoice' => $unpaid,
-            'emails' => $lead->emails()->with('user:id,name')->orderByDesc('sent_at')->orderByDesc('id')->limit(50)->get()
+            'emails' => $lead->emails()->with(['user:id,name', 'attachments'])->orderByDesc('sent_at')->orderByDesc('id')->limit(50)->get()
                 ->map(fn (LeadEmail $e) => ContactController::emailRow($e, $user))->values(),
             // The address this person would send from on the lead's brand
             'mailbox' => Mailbox::forSender($lead->brand_id, $user)?->address,

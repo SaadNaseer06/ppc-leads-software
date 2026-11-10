@@ -122,7 +122,7 @@ class EmailInboxController extends Controller
         }
         $lead->markEmailsReadBy($user);
 
-        $emails = $lead->emails()->with('user:id,name')->orderByDesc('sent_at')->orderByDesc('id')->limit(100)->get()
+        $emails = $lead->emails()->with(['user:id,name', 'attachments'])->orderByDesc('sent_at')->orderByDesc('id')->limit(100)->get()
             ->reverse()->values()->map(fn (LeadEmail $e) => ContactController::emailRow($e, $user));
         if ($emails->isEmpty() && $lead->last_email_at) {
             Lead::clearEmailThreads([$lead->id]);

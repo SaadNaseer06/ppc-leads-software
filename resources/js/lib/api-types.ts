@@ -451,9 +451,20 @@ export type LeadEmailRow = {
   to_email: string;
   subject: string;
   body: string;
+  /** The formatted version, cleaned on the server to bold, italic, underline, lists and links */
+  html: string | null;
   sent_at: string;
   /** Who on the team sent it */
   sender: string | null;
+  attachments: EmailAttachment[];
+};
+
+export type EmailAttachment = {
+  id: number;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
 };
 
 export type EmailThreadRow = {

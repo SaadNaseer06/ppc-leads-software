@@ -5,10 +5,13 @@ namespace App\Services;
 use App\Events\LeadEmailReceived;
 use App\Models\Lead;
 use App\Models\LeadEmail;
+use App\Models\LeadEmailAttachment;
 use App\Models\Mailbox;
 use App\Models\User;
 use Illuminate\Mail\Mailer;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Throwable;
 use Webklex\PHPIMAP\Client;
@@ -25,6 +28,12 @@ class MailboxService
     private const BATCH = 50;
 
     private const TIMEOUT = 20;
+
+    /** Inline pictures under this size are signature logos and icons, not something the client sent */
+    private const SIGNATURE_IMAGE = 60 * 1024;
+
+    /** At most this much is kept from one incoming email */
+    private const MAX_RECEIVED = 40 * 1024 * 1024;
 
     public function __construct(private LiveSignal $live) {}
 
@@ -64,8 +73,14 @@ class MailboxService
         ])->save();
     }
 
-    /** Sends from the mailbox, and files it on the lead when there is one */
-    public function send(Mailbox $mailbox, string $to, ?string $toName, ?Lead $lead, ?User $sender, string $subject, string $body, ?string $inReplyTo = null): ?LeadEmail
+    /**
+     * Sends from the mailbox, and files it on the lead when there is one.
+     *
+     * @param  string  $body  the plain-text version, always sent
+     * @param  string|null  $html  the formatted version, already cleaned by EmailHtml
+     * @param  list<array{path: string, name: string, mime: string, size: int}>  $attachments  files already on the private disk
+     */
+    public function send(Mailbox $mailbox, string $to, ?string $toName, ?Lead $lead, ?User $sender, string $subject, string $body, ?string $inReplyTo = null, ?string $html = null, array $attachments = []): ?LeadEmail
     {
         $brand = $mailbox->brand;
         // Header injection: a subject is one line, whatever was pasted into it
@@ -75,8 +90,14 @@ class MailboxService
         // (e.g. "1abc-23XY" on cPanel), not the Message-ID the client replies to
         $messageId = bin2hex(random_bytes(16)).'@'.Str::after($mailbox->address, '@');
 
-        $sent = $this->mailer($mailbox)->raw($body, function ($message) use ($to, $toName, $mailbox, $from, $subject, $inReplyTo, $messageId) {
+        // Formatted and plain text together: each mail app shows the one it can
+        $content = array_filter(['html' => $html !== null ? new HtmlString(EmailHtml::document($html)) : null, 'text' => new HtmlString($body)]);
+        $disk = Storage::disk(LeadEmailAttachment::DISK);
+        $sent = $this->mailer($mailbox)->send($content, [], function ($message) use ($to, $toName, $mailbox, $from, $subject, $inReplyTo, $messageId, $attachments, $disk) {
             $message->to($to, $toName)->from($mailbox->address, $from)->subject($subject);
+            foreach ($attachments as $file) {
+                $message->attach($disk->path($file['path']), ['as' => $file['name'], 'mime' => $file['mime']]);
+            }
             $headers = $message->getSymfonyMessage()->getHeaders();
             $headers->addIdHeader('Message-ID', $messageId);
             if ($inReplyTo) {
@@ -105,11 +126,15 @@ class MailboxService
             'to_email' => $to,
             'subject' => $subject,
             'body' => $body,
+            'body_html' => $html,
             'message_id' => $messageId,
             'in_reply_to' => $inReplyTo,
             'sent_at' => now(),
             'created_at' => now(),
         ]);
+        foreach ($attachments as $file) {
+            $email->attachments()->create([...$file, 'created_at' => now()]);
+        }
         $lead->activities()->create(['actor_id' => $sender?->id, 'type' => 'email_out', 'data' => ['subject' => $subject]]);
         $lead->recordEmail('out');
 
@@ -187,7 +212,7 @@ class MailboxService
         $body = self::utf8($message->hasTextBody() ? $message->getTextBody() : trim(html_entity_decode(strip_tags((string) $message->getHTMLBody()))));
         $date = rescue(fn () => $message->getDate()->toDate(), null, false);
 
-        LeadEmail::create([
+        $email = LeadEmail::create([
             'lead_id' => $lead->id,
             'brand_id' => $mailbox->brand_id,
             'mailbox_id' => $mailbox->id,
@@ -203,6 +228,12 @@ class MailboxService
             'sent_at' => $date ?? now(),
             'created_at' => now(),
         ]);
+        // The email is filed even if one of its files can't be saved
+        try {
+            $this->saveAttachments($email, $message);
+        } catch (Throwable $e) {
+            report($e);
+        }
         $lead->activities()->create(['type' => 'email_in', 'data' => ['subject' => Str::limit(self::utf8((string) $message->getSubject()), 180)]]);
         $lead->recordEmail('in');
         $this->live->leads($lead->brand_id, $lead->assignee_id);
@@ -212,6 +243,28 @@ class MailboxService
         }
 
         return true;
+    }
+
+    /** Files the client sent, kept on the private disk. Small inline pictures (logos in signatures) are left out. */
+    private function saveAttachments(LeadEmail $email, $message): void
+    {
+        $total = 0;
+        foreach ($message->getAttachments() as $attachment) {
+            $content = (string) $attachment->getContent();
+            $size = strlen($content);
+            $inline = strtolower((string) $attachment->disposition) === 'inline' || ($attachment->id && $attachment->id !== $attachment->hash);
+            if ($size === 0 || ($inline && $size < self::SIGNATURE_IMAGE) || $total + $size > self::MAX_RECEIVED) {
+                continue;
+            }
+            $total += $size;
+            $email->attachments()->create([
+                'name' => LeadEmailAttachment::cleanName(self::utf8((string) ($attachment->getName() ?: $attachment->filename ?: 'attachment'))),
+                'mime' => Str::limit(strtolower((string) ($attachment->getMimeType() ?: $attachment->content_type ?: 'application/octet-stream')), 120, ''),
+                'size' => $size,
+                'path' => LeadEmailAttachment::store($content),
+                'created_at' => now(),
+            ]);
+        }
     }
 
     /**
@@ -225,7 +278,7 @@ class MailboxService
         return mb_check_encoding($text, 'UTF-8') ? $text : mb_convert_encoding($text, 'UTF-8', 'Windows-1252');
     }
 
-    private function copyToSent(Mailbox $mailbox, string $raw): void
+    protected function copyToSent(Mailbox $mailbox, string $raw): void
     {
         $client = $this->imap($mailbox)->connect();
         try {
@@ -236,7 +289,7 @@ class MailboxService
         }
     }
 
-    private function mailer(Mailbox $mailbox): Mailer
+    protected function mailer(Mailbox $mailbox): Mailer
     {
         $port = (int) ($mailbox->smtp_port ?: 465);
 

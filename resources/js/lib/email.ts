@@ -51,3 +51,19 @@ export function emailSnippet(body: string, max = 140): string {
 export function replySubject(subject: string): string {
   return /^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`;
 }
+
+/** "820 KB", "4.2 MB" */
+export function fileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  const mb = bytes / 1024 / 1024;
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+/** Files that open in the browser; anything else downloads (the server decides the same way) */
+export function viewableFile(mime: string) {
+  return ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"].includes(mime);
+}
+
+/** Mail providers bounce these, so they're refused before uploading */
+export const BLOCKED_FILES = ["exe", "bat", "cmd", "com", "scr", "msi", "msp", "pif", "vbs", "vbe", "js", "jse", "wsf", "wsh", "ps1", "jar", "cpl", "hta", "lnk", "reg", "dll", "apk", "app"];

@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\DeletedLead;
 use App\Models\Lead;
+use App\Models\LeadEmailAttachment;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -51,6 +53,8 @@ class LeadDeletion
 
     private function archiveAndRemove(Lead $lead, User $actor): void
     {
+        // The emails go with the lead, so the files sent with them do too (once the delete has gone through)
+        $files = LeadEmailAttachment::whereIn('lead_email_id', $lead->emails()->select('id'))->pluck('path')->all();
         DB::transaction(function () use ($lead, $actor) {
             $lead->loadMissing(['activities', 'website:id,name', 'brand:id,name', 'assignee:id,name']);
 
@@ -83,6 +87,9 @@ class LeadDeletion
             // Activities cascade; conversations keep history with lead_id null
             $lead->delete();
         });
+        if ($files) {
+            Storage::disk(LeadEmailAttachment::DISK)->delete($files);
+        }
         $this->live->leads($lead->brand_id, $lead->assignee_id);
     }
 }
