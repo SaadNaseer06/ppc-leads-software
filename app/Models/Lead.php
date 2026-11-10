@@ -103,6 +103,14 @@ class Lead extends Model
     }
 
     /** The lead's own rep reading it clears "unread"; while nobody owns the lead, anyone working it does */
+    /** Leads left with no emails: no conversation, nothing unread, nothing to answer. Never touches updated_at. */
+    public static function clearEmailThreads(array $ids): void
+    {
+        static::query()->toBase()->whereIn('id', $ids)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('lead_emails')->whereColumn('lead_emails.lead_id', 'leads.id'))
+            ->update(['last_email_at' => null, 'email_unread' => false, 'email_needs_reply' => false]);
+    }
+
     public function markEmailsReadBy(User $user): void
     {
         if ($this->email_unread && $user->canWorkLeads() && (int) ($this->assignee_id ?? $user->id) === $user->id) {

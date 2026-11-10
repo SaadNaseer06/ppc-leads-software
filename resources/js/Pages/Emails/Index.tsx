@@ -269,7 +269,11 @@ function Conversation({ thread, back, canSend }: { thread: EmailThreadDetail; ba
             </span>
           </h3>
         ) : null}
-        <EmailThread emails={emails} leadName={lead.name} />
+        {emails.length ? (
+          <EmailThread emails={emails} leadName={lead.name} />
+        ) : (
+          <p className="px-5 py-10 text-center text-sm text-slate-500">No emails with {lead.name} yet.</p>
+        )}
 
         {canSend && mailbox && !blocked ? (
           <div className="border-t border-slate-100">

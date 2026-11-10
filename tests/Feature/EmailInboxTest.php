@@ -159,6 +159,28 @@ class EmailInboxTest extends TestCase
         }
     }
 
+    public function test_a_conversation_whose_emails_were_removed_leaves_the_inbox(): void
+    {
+        $grace = $this->lead('Grace', 'grace@client.test', $this->rep);
+        $omar = $this->lead('Omar', 'omar@client.test', $this->rep);
+        $this->email($grace, 'in', 'Hello');
+        $this->email($omar, 'in', 'Hi there');
+        // Deleted straight from the database, as in phpMyAdmin
+        LeadEmail::where('lead_id', $grace->id)->delete();
+        $this->actingAs($this->rep);
+
+        $this->getJson('/api/emails')->assertJsonCount(1, 'threads')->assertJsonPath('threads.0.name', 'Omar')
+            ->assertJsonPath('counts.unread', 1)->assertJsonPath('counts.needs_reply', 1);
+        $this->getJson('/api/live')->assertJsonPath('unread_emails', 1);
+        $this->assertNull($grace->fresh()->last_email_at);
+        $this->assertFalse($grace->fresh()->email_needs_reply);
+
+        // Opening it directly clears it too
+        LeadEmail::where('lead_id', $omar->id)->delete();
+        $this->getJson("/api/emails/{$omar->id}")->assertOk()->assertJsonCount(0, 'emails');
+        $this->getJson('/api/live')->assertJsonPath('unread_emails', 0);
+    }
+
     public function test_mail_in_the_wrong_charset_is_filed_as_readable_text(): void
     {
         // Latin-1 / Windows-1252 bytes in an email that claims UTF-8: the database would refuse them

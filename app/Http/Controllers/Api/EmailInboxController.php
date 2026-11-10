@@ -61,6 +61,13 @@ class EmailInboxController extends Controller
         // The newest email of each conversation on the page, and how many it has: one grouped read on lead_id
         $stats = LeadEmail::whereIn('lead_id', $leads->pluck('id'))->groupBy('lead_id')
             ->selectRaw('lead_id, MAX(id) AS last_id, COUNT(*) AS total')->get()->keyBy('lead_id');
+        // Leads whose emails were all removed (outside the app, say in phpMyAdmin) have no conversation left:
+        // they leave the inbox and stop counting as unread
+        $empty = $leads->pluck('id')->diff($stats->keys());
+        if ($empty->isNotEmpty()) {
+            Lead::clearEmailThreads($empty->all());
+            $leads = $leads->reject(fn (Lead $lead) => $empty->contains($lead->id))->values();
+        }
         $latest = LeadEmail::with('user:id,name')->whereIn('id', $stats->pluck('last_id'))
             ->get(['id', 'lead_id', 'user_id', 'direction', 'subject', 'body'])->keyBy('lead_id');
         $mask = ! $user->seesFullContacts();
@@ -117,6 +124,9 @@ class EmailInboxController extends Controller
 
         $emails = $lead->emails()->with('user:id,name')->orderByDesc('sent_at')->orderByDesc('id')->limit(100)->get()
             ->reverse()->values()->map(fn (LeadEmail $e) => ContactController::emailRow($e, $user));
+        if ($emails->isEmpty() && $lead->last_email_at) {
+            Lead::clearEmailThreads([$lead->id]);
+        }
 
         return [
             'lead' => [
