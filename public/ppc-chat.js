@@ -29,6 +29,41 @@
   }
 
   var base = (script.getAttribute("data-endpoint") || new URL(script.src, location.href).origin).replace(/\/$/, "");
+  // The visit that came from an ad, shared with ppc-leads.js (same key and shape): a visitor
+  // who clicks an ad, browses on and then chats still counts for that campaign
+  var adVisit = (function () {
+    var KEY = "ppcl_attribution";
+    var TTL_MS = 90 * 24 * 60 * 60 * 1000;
+    var PARAMS = [
+      "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+      "gclid", "gbraid", "wbraid", "msclkid", "dclid", "fbclid", "ttclid", "li_fat_id",
+      "gad_campaignid", "gad_source", "utm_id", "campaignid",
+    ];
+    var stored = null;
+    try {
+      stored = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (!stored || !stored.ts || Date.now() - stored.ts >= TTL_MS) stored = null;
+    } catch (e) {}
+    var query = new URLSearchParams(location.search);
+    var params = {};
+    var fromAd = false;
+    PARAMS.forEach(function (p) {
+      var v = query.get(p);
+      if (v) {
+        params[p] = v;
+        fromAd = true;
+      }
+    });
+    if (!stored || fromAd) {
+      var ref = document.referrer && document.referrer.indexOf(location.origin) !== 0 ? document.referrer : "";
+      stored = { ts: Date.now(), params: params, landing_page: location.href, referrer: ref || (stored && stored.referrer) || "" };
+      try {
+        localStorage.setItem(KEY, JSON.stringify(stored));
+      } catch (e) {}
+    }
+    return stored;
+  })();
+
   var title = script.getAttribute("data-title") || "Live support";
   var accent = script.getAttribute("data-color") || "#0f766e";
   var greeting = script.getAttribute("data-greeting") || "Welcome — send a message and a specialist will reply shortly.";
@@ -594,6 +629,8 @@
         public_key: siteKey,
         visitor_token: loadToken(),
         page_url: location.href,
+        landing_page: adVisit.landing_page || null,
+        referrer: adVisit.referrer || null,
       },
     }).then(function (data) {
       state.visitorToken = data.visitor_token;

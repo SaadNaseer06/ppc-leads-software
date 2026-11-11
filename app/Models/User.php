@@ -95,6 +95,12 @@ class User extends Authenticatable
         return $this->managesBrands();
     }
 
+    /** See which ad campaigns bring leads, and give campaigns readable names */
+    public function canManageCampaigns(): bool
+    {
+        return $this->managesBrands();
+    }
+
     public function canAssignLeads(): bool
     {
         return $this->managesBrands();

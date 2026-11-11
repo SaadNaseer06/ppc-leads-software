@@ -56,7 +56,7 @@ class SalesReportTest extends TestCase
             'email' => fake()->unique()->safeEmail(),
             'assignee_id' => $rep->id,
         ])['lead_id']);
-        $lead->update(['channel' => $o['channel'] ?? 'direct', 'utm_campaign' => $o['campaign'] ?? null]);
+        $lead->update(['channel' => $o['channel'] ?? 'direct', 'utm_campaign' => $o['campaign'] ?? null, 'campaign' => $o['campaign'] ?? null]);
 
         $invoice = Invoice::createWithNumber([
             ...Invoice::priced([['label' => 'Work', 'quantity' => 1, 'unit_price' => $amount]], 0, 0),

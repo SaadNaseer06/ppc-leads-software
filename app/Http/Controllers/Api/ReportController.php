@@ -40,7 +40,7 @@ class ReportController extends Controller
                 $paid = $row->status === 'paid' ? (float) $row->amount : min((float) $row->amount, (float) $row->paid);
                 $cells = [
                     substr((string) $row->created_at, 0, 10), $row->number, $brand, $row->lead_name, $rep, $row->channel,
-                    $row->utm_campaign, $row->status === 'sent' ? 'unpaid' : $row->status, $row->currency,
+                    $row->campaign_label, $row->status === 'sent' ? 'unpaid' : $row->status, $row->currency,
                     $row->subtotal, $row->discount, $row->tax_amount, $row->amount,
                     number_format($paid, 2, '.', ''), number_format((float) $row->amount - $paid, 2, '.', ''), $row->due_date,
                 ];

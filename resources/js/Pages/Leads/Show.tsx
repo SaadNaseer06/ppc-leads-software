@@ -1,4 +1,4 @@
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Head, Link, router, usePage } from "@inertiajs/react";
 import { ArrowLeft, ExternalLink, MessageSquare } from "lucide-react";
 import type { ChatMessage, LeadActivity, LeadDetail } from "@/lib/api-types";
 import type { SharedProps } from "@/types";
@@ -7,6 +7,7 @@ import { CHANNEL_LABELS, labelFor, SOURCE_LABELS, STATUS_LABELS } from "@/lib/ro
 import { Avatar } from "@/components/ui/avatar";
 import { ChannelBadge, SourceBadge, StatusBadge } from "@/components/ui/badges";
 import { CopyButton } from "@/components/ui/copy-button";
+import { CampaignName } from "@/components/campaign-name";
 import { LeadActions, EditContactButton } from "./partials/lead-actions";
 import { NoteForm } from "./partials/note-form";
 import { ContactCard, EmailsCard } from "./partials/lead-contact";
@@ -64,7 +65,7 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <section className="card">
             <div className="card-header">
@@ -75,7 +76,7 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
                 {lead.message || <span className="text-slate-400">No message was included.</span>}
               </p>
               {Object.keys(lead.fields).length > 0 ? (
-                <dl className="grid gap-x-6 gap-y-2 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-2">
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-2">
                   {Object.entries(lead.fields).map(([key, value]) => (
                     <div key={key} className="min-w-0">
                       <dt className="text-xs font-medium text-slate-500">{key}</dt>
@@ -171,7 +172,7 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
               <Detail label="Channel" value={labelFor(CHANNEL_LABELS, lead.channel)} />
               <Detail label="UTM source" value={lead.utm_source} />
               <Detail label="UTM medium" value={lead.utm_medium} />
-              <Detail label="Campaign" value={lead.utm_campaign} />
+              <CampaignRow lead={lead} canName={user.can.manage_campaigns} />
               <Detail label="Keyword" value={lead.utm_term} />
               <Detail label="Ad content" value={lead.utm_content} />
               <Detail
@@ -225,6 +226,52 @@ export default function LeadShow({ lead, activities, conversations, invoices, as
         </div>
       </div>
     </div>
+  );
+}
+
+/** The ad campaign the lead came from; managers can name it for every lead it brings */
+function CampaignRow({ lead, canName }: { lead: LeadDetail["lead"]; canName: boolean }) {
+  const key = lead.campaign;
+  const isId = !!key && /^\d{5,}$/.test(key);
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4 px-4 py-2.5">
+        <dt className="shrink-0 text-slate-500">Campaign</dt>
+        <dd className="flex min-w-0 flex-col items-end text-right text-slate-800">
+          {key && lead.campaign_label ? (
+            <>
+              <CampaignName
+                brandId={lead.brand.id}
+                campaign={key}
+                name={lead.campaign_name}
+                label={lead.campaign_label}
+                canEdit={canName}
+                onSaved={() => router.reload({ only: ["lead"] })}
+              >
+                <Link
+                  href={`/leads?campaign=${encodeURIComponent(key)}`}
+                  className="font-medium text-teal-700 hover:underline"
+                  title="Show every lead from this campaign"
+                >
+                  {lead.campaign_label}
+                </Link>
+              </CampaignName>
+              {[lead.campaign_platform, canName && isId && !lead.campaign_name ? "Click the pencil to name it" : null]
+                .filter(Boolean)
+                .map((hint) => (
+                  <span key={hint} className="text-xs text-slate-500">
+                    {hint}
+                  </span>
+                ))}
+            </>
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
+        </dd>
+      </div>
+      {isId ? <Detail label="Campaign ID" value={key} copy /> : null}
+      {lead.utm_campaign && lead.utm_campaign !== lead.campaign_label ? <Detail label="UTM campaign" value={lead.utm_campaign} /> : null}
+    </>
   );
 }
 

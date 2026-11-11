@@ -14,12 +14,14 @@ use App\Models\LeadEmail;
 use App\Models\Mailbox;
 use App\Models\User;
 use App\Models\Website;
+use App\Services\CampaignNames;
 use App\Services\ContactMask;
 use App\Services\LeadAssignment;
 use App\Services\LeadDeletion;
 use App\Services\LeadIntake;
 use App\Services\LeadQuery;
 use App\Services\TeamDirectory;
+use App\Support\Attribution;
 use App\Support\LeadText;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +43,7 @@ class LeadController extends Controller
         $filters = $this->leads->filters($request->query());
         $page = $this->leads->page($user, $filters, $request->query('cursor'), (string) $request->query('dir', 'next'), (int) $request->query('size', 50));
         $total = $this->leads->count($user, $filters);
+        $this->nameCampaigns($page['rows']);
 
         return response()->json([
             'leads' => LeadRowResource::collection($page['rows']),
@@ -50,6 +53,17 @@ class LeadController extends Controller
             'total_capped' => $total['capped'],
             'filters' => (object) $filters,
         ]);
+    }
+
+    /** Puts each lead's campaign label (its given name, else its tag or ID) on the lead */
+    private function nameCampaigns(iterable $leads): void
+    {
+        $leads = collect($leads);
+        $names = app(CampaignNames::class)->lookup($leads->map(fn (Lead $l) => [$l->brand_id, $l->campaign]));
+        foreach ($leads as $lead) {
+            $lead->campaign_name = $names[CampaignNames::key($lead->brand_id, $lead->campaign)] ?? null;
+            $lead->campaign_label = CampaignNames::label($lead->campaign_name, $lead->utm_campaign, $lead->campaign);
+        }
     }
 
     public function store(Request $request, LeadIntake $intake): JsonResponse
@@ -88,6 +102,7 @@ class LeadController extends Controller
             ->with(['brand:id,name,merchant_name', 'website:id,name,domain', 'assignee:id,name,email'])
             ->findOrFail($id);
         $lead->markEmailsReadBy($user);
+        $this->nameCampaigns([$lead]);
 
         $activities = $lead->activities()->with('actor:id,name')->latest('created_at')->latest('id')->limit(100)->get();
         $userIds = $activities->flatMap(fn (LeadActivity $a) => [$a->data['to_user_id'] ?? null, $a->data['from_user_id'] ?? null])->filter()->unique();
@@ -105,7 +120,7 @@ class LeadController extends Controller
             'lead' => [
                 ...$lead->only([
                     'id', 'name', 'email', 'phone', 'company', 'message', 'source', 'channel', 'status',
-                    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'click_id', 'click_id_type',
+                    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'campaign', 'click_id', 'click_id_type',
                     'landing_page', 'page_url', 'referrer', 'form_name', 'ip_address', 'submission_count',
                     'assigned_at', 'last_activity_at', 'created_at',
                 ]),
@@ -118,6 +133,9 @@ class LeadController extends Controller
                 'contact_masked' => $mask,
                 'fields' => $fields ? ($mask ? ContactMask::fields($fields) : $fields) : (object) [],
                 'device' => LeadText::device($lead->user_agent),
+                'campaign_name' => $lead->campaign_name,
+                'campaign_label' => $lead->campaign_label,
+                'campaign_platform' => Attribution::platform($lead->click_id_type, $lead->utm_source),
                 'brand' => $lead->brand,
                 'website' => $lead->website,
                 'assignee' => $lead->assignee,
@@ -276,6 +294,7 @@ class LeadController extends Controller
             'Website' => fn (Lead $l) => $l->website?->name,
             'Brand' => fn (Lead $l) => $l->brand?->name,
             'Assignee' => fn (Lead $l) => $l->assignee?->name,
+            'Campaign' => 'campaign_label', 'Campaign ID' => fn (Lead $l) => CampaignNames::isId($l->campaign) ? $l->campaign : '',
             'UTM Source' => 'utm_source', 'UTM Medium' => 'utm_medium', 'UTM Campaign' => 'utm_campaign',
             'UTM Term' => 'utm_term', 'UTM Content' => 'utm_content', 'Click ID' => 'click_id',
             'Click ID Type' => 'click_id_type', 'Landing Page' => 'landing_page', 'Referrer' => 'referrer',
@@ -299,6 +318,7 @@ class LeadController extends Controller
                         ->orWhere(fn ($e) => $e->where('leads.created_at', $t)->where('leads.id', '<', $id)));
                 }
                 $rows = $q->orderByDesc('leads.created_at')->orderByDesc('leads.id')->limit(2000)->get();
+                $this->nameCampaigns($rows);
 
                 foreach ($rows as $lead) {
                     fputcsv($out, array_map(function ($get) use ($lead) {

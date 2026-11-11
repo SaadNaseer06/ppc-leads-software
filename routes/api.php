@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillingController;
 use App\Http\Controllers\Api\BrandBrandingController;
 use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\DashboardController;
@@ -118,6 +119,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/finance', [InvoiceController::class, 'finance']);
     Route::post('/finance/bulk-pdf', [InvoiceController::class, 'bulkPdf']);
     Route::get('/reports/sales-by-brand', [InvoiceController::class, 'salesByBrand']);
+    Route::get('/campaigns', [CampaignController::class, 'index']);
+    Route::put('/campaigns', [CampaignController::class, 'update']);
     Route::get('/reports/sales', [ReportController::class, 'sales']);
     Route::get('/reports/sales/export', [ReportController::class, 'export']);
 });

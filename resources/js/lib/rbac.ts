@@ -11,6 +11,7 @@ export type NavKey =
   | "invoices"
   | "finance"
   | "reports"
+  | "campaigns"
   | "websites"
   | "team"
   | "brands"
@@ -35,6 +36,7 @@ export function navItemsFor(user: CurrentUser): NavItem[] {
   if (can.view_invoices) items.push({ key: "invoices", href: "/invoices", label: "Invoices", section: "main" });
   if (can.view_finance) items.push({ key: "finance", href: "/finance", label: "Finance", section: "main" });
   if (can.view_reports) items.push({ key: "reports", href: "/reports", label: "Reports", section: "main" });
+  if (can.manage_campaigns) items.push({ key: "campaigns", href: "/campaigns", label: "Campaigns", section: "main" });
   if (can.manage_websites) items.push({ key: "websites", href: "/websites", label: "Websites", section: "admin" });
   if (can.view_team) items.push({ key: "team", href: "/team", label: "Team", section: "admin" });
   if (can.assign_leads) items.push({ key: "brands", href: "/brands", label: "Brands & routing", section: "admin" });

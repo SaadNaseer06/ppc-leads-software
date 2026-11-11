@@ -18,6 +18,7 @@ export type Permission =
   | "view_finance"
   | "view_reports"
   | "manage_websites"
+  | "manage_campaigns"
   | "manage_users"
   | "view_team"
   | "assign_brand_managers"

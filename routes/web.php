@@ -40,4 +40,5 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/email-attachments/{id}', [EmailAttachmentController::class, 'show'])->whereNumber('id');
     Route::get('/contact-log', [PageController::class, 'contactLog']);
     Route::get('/reports', [PageController::class, 'reports']);
+    Route::get('/campaigns', [PageController::class, 'campaigns']);
 });

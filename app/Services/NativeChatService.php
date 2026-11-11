@@ -31,7 +31,7 @@ class NativeChatService
      *
      * @return array{conversation: Conversation, visitor_token: string, created: bool}
      */
-    public function session(Website $website, ?string $visitorToken, ?string $pageUrl = null): array
+    public function session(Website $website, ?string $visitorToken, ?string $pageUrl = null, ?string $landingPage = null, ?string $referrer = null): array
     {
         if ($visitorToken) {
             $hash = $this->hashToken($visitorToken);
@@ -43,8 +43,14 @@ class NativeChatService
                 ->first();
 
             if ($existing) {
-                if ($pageUrl) {
-                    $existing->update(['page_url' => LeadText::clean($pageUrl, 2048) ?? $existing->page_url]);
+                $existing->fill([
+                    'page_url' => LeadText::clean($pageUrl, 2048) ?? $existing->page_url,
+                    // The visit that brought them stays the one that counts
+                    'landing_page' => $existing->landing_page ?? LeadText::clean($landingPage, 2048),
+                    'referrer' => $existing->referrer ?? LeadText::clean($referrer, 2048),
+                ]);
+                if ($existing->isDirty()) {
+                    $existing->save();
                 }
 
                 return ['conversation' => $existing, 'visitor_token' => $visitorToken, 'created' => false];
@@ -62,6 +68,8 @@ class NativeChatService
             'brand_id' => $website->brand_id,
             'property_name' => $website->name,
             'page_url' => LeadText::clean($pageUrl, 2048),
+            'landing_page' => LeadText::clean($landingPage, 2048),
+            'referrer' => LeadText::clean($referrer, 2048),
             'status' => 'open',
             'message_count' => 0,
             'started_at' => $now,
@@ -279,7 +287,12 @@ class NativeChatService
             'email' => $conversation->visitor_email,
             'message' => $firstMessage,
             'form_name' => 'Live chat',
-            'attribution' => Attribution::merge(Attribution::fromUrl($conversation->page_url), ['page_url' => $conversation->page_url]),
+            // The ad visit first (they may have browsed on before chatting), then the chat page
+            'attribution' => Attribution::merge(
+                Attribution::fromUrl($conversation->landing_page),
+                Attribution::fromUrl($conversation->page_url),
+                ['landing_page' => $conversation->landing_page, 'page_url' => $conversation->page_url, 'referrer' => $conversation->referrer],
+            ),
             'extra_fields' => $location ? ['Location' => $location] : [],
             'promote' => $promote,
         ]);

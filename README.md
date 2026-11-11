@@ -20,6 +20,9 @@ Inertia and compiled once into `public/build`, so the server only needs PHP and 
 - **Multi-website capture.** Each website gets a key. Leads arrive through a drop-in embed script that captures
   every form and stores ad attribution (gclid, UTM, landing page) for 90 days, or through a webhook URL
   (Elementor, WPForms, Gravity Forms, Zapier, custom code).
+- **Campaign tracking.** Every lead shows the ad campaign it came from (Google Ads' campaign ID arrives by itself,
+  other platforms via `utm_campaign`), chats included. Managers name campaigns once under **Campaigns**, which also
+  shows each campaign's leads and conversions.
 - **Native live chat.** Drop-in `ppc-chat.js` widget; agents reply from **Chats**. Pusher (cloud) delivers
   messages in realtime on shared hosting; polling is the fallback. Inbox staff can convert a chat into a lead or send
   it to a Front Sales rep with a private note, and the rep is told at once on whatever screen they're on.

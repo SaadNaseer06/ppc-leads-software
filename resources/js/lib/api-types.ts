@@ -22,7 +22,10 @@ export type LeadRow = {
   status: string;
   source: string;
   channel: string;
+  /** The campaign's given name, else its utm_campaign tag or ID */
   campaign: string | null;
+  /** What the lead is filed under: the ad platform's campaign ID, or the utm_campaign tag */
+  campaign_key: string | null;
   submission_count: number;
   created_at: string;
   website: Ref | null;
@@ -39,6 +42,7 @@ export type LeadFilters = {
   brand?: string;
   /** "unassigned" | "me" | a user id */
   assignee?: string;
+  campaign?: string;
   from?: string;
   to?: string;
 };
@@ -85,6 +89,10 @@ export type LeadDetail = {
     utm_campaign: string | null;
     utm_term: string | null;
     utm_content: string | null;
+    campaign: string | null;
+    campaign_name: string | null;
+    campaign_label: string | null;
+    campaign_platform: string | null;
     click_id: string | null;
     click_id_type: string | null;
     landing_page: string | null;
@@ -534,4 +542,31 @@ export type ContactLogData = {
   limit: number;
   people: { id: number; name: string; role: string | null; today: number; week: number; limit_hits: number }[];
   recent: { id: number; user: string | null; lead: Ref | null; reason: string | null; at: string }[];
+};
+
+export type CampaignRow = {
+  brand_id: number;
+  brand: string | null;
+  /** What leads are filed under: the platform's campaign ID, or the utm_campaign tag */
+  campaign: string;
+  is_id: boolean;
+  /** The name someone gave it */
+  name: string | null;
+  label: string;
+  /** The utm_campaign tag, when it differs from the key */
+  tag: string | null;
+  platform: string | null;
+  leads: number;
+  converted: number;
+  last_lead_at: string;
+};
+
+export type CampaignsData = {
+  days: number;
+  from: string;
+  brand: number | null;
+  periods: number[];
+  brands: Ref[];
+  campaigns: CampaignRow[];
+  truncated: boolean;
 };

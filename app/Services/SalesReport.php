@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\Channel;
 use App\Enums\LeadStatus;
+use App\Models\AdCampaign;
 use App\Models\Brand;
 use App\Models\Invoice;
 use App\Models\Lead;
@@ -80,9 +81,36 @@ class SalesReport
             'by_rep' => $this->breakdown($set, 'created_by_id', User::query()),
             'by_channel' => $this->breakdownBy($set, 'channel')
                 ->map(fn ($r) => [...$r, 'id' => $r['key'], 'name' => $r['key']])->values()->all(),
-            'by_campaign' => $this->breakdownBy($set->clone()->whereNotNull('utm_campaign'), 'utm_campaign')
-                ->take(10)->map(fn ($r) => [...$r, 'id' => $r['key'], 'name' => $r['key']])->values()->all(),
+            'by_campaign' => $this->campaigns($set),
         ];
+    }
+
+    /** The ten campaigns that sold most, under the names the brands gave them */
+    private function campaigns(QueryBuilder $set): array
+    {
+        $rows = $this->breakdownBy($set->clone()->whereNotNull('campaign'), 'campaign')->take(10);
+        $names = $this->campaignNames($set, $rows->pluck('key')->all());
+
+        return $rows->map(fn ($r) => [
+            ...$r, 'id' => $r['key'],
+            'name' => $names[$r['key']] ?? CampaignNames::label(null, null, $r['key']),
+        ])->values()->all();
+    }
+
+    /**
+     * Given names for these campaigns, among the brands in the set
+     *
+     * @return array<string, string>
+     */
+    private function campaignNames(QueryBuilder $set, array $campaigns): array
+    {
+        if (! $campaigns) {
+            return [];
+        }
+
+        return AdCampaign::whereIn('campaign', $campaigns)
+            ->whereIn('brand_id', $set->clone()->select('brand_id')->distinct()->pluck('brand_id'))
+            ->pluck('name', 'campaign')->all();
     }
 
     /** Every invoice in the filtered set, for the CSV: newest first, one batch at a time */
@@ -97,7 +125,9 @@ class SalesReport
                 ->orderByDesc('id')->limit(1000)->get();
             $brands = Brand::whereIn('id', $batch->pluck('brand_id')->unique())->pluck('name', 'id');
             $reps = User::whereIn('id', $batch->pluck('created_by_id')->unique())->pluck('name', 'id');
+            $names = app(CampaignNames::class)->lookup($batch->map(fn ($r) => [$r->brand_id, $r->campaign]));
             foreach ($batch as $row) {
+                $row->campaign_label = CampaignNames::label($names[CampaignNames::key($row->brand_id, $row->campaign)] ?? null, $row->utm_campaign, $row->campaign);
                 $each($row, $brands[$row->brand_id] ?? '', $reps[$row->created_by_id] ?? '');
             }
             $beforeId = $batch->last()?->id;
@@ -140,7 +170,7 @@ class SalesReport
         $invoices->select([
             'invoices.id', 'invoices.number', 'invoices.amount', 'invoices.subtotal', 'invoices.discount', 'invoices.tax_amount',
             'invoices.currency', 'invoices.status', 'invoices.due_date', 'invoices.brand_id', 'invoices.created_by_id',
-            'invoices.created_at', 'invoices.client_name as lead_name', 'leads.channel', 'leads.utm_campaign',
+            'invoices.created_at', 'invoices.client_name as lead_name', 'leads.channel', 'leads.utm_campaign', 'leads.campaign',
         ])->selectRaw('(SELECT COALESCE(SUM(p.amount), 0) FROM payment_transactions p WHERE p.invoice_id = invoices.id) AS paid');
 
         return DB::query()->fromSub($invoices->toBase(), 'i');

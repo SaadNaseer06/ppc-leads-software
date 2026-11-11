@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\DashboardController;
@@ -117,6 +118,11 @@ class PageController extends Controller
     public function finance(): Response
     {
         return Inertia::render('Finance/Index', $this->payload(InvoiceController::class, 'finance'));
+    }
+
+    public function campaigns(): Response
+    {
+        return Inertia::render('Campaigns', $this->payload(CampaignController::class, 'index'));
     }
 
     public function reports(): Response

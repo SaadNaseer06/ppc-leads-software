@@ -87,6 +87,7 @@ class LeadIntake
                 'utm_campaign' => $attribution['utm_campaign'] ?? null,
                 'utm_term' => $attribution['utm_term'] ?? null,
                 'utm_content' => $attribution['utm_content'] ?? null,
+                'campaign' => Attribution::campaign($attribution),
                 'click_id' => $attribution['click_id'] ?? null,
                 'click_id_type' => $attribution['click_id_type'] ?? null,
                 'landing_page' => $attribution['landing_page'] ?? null,
@@ -155,6 +156,14 @@ class LeadIntake
             if ($reopen) {
                 $existing->status = LeadStatus::New->value;
             }
+            // First came with no ad behind it, now came back from one: credit that campaign
+            $campaign = Attribution::campaign($attribution);
+            if (! $existing->campaign && $campaign) {
+                $existing->fill(['campaign' => $campaign, 'channel' => Attribution::channel($attribution, $website?->domain)->value]);
+                foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'click_id', 'click_id_type', 'landing_page', 'referrer'] as $key) {
+                    $existing->{$key} ??= $attribution[$key] ?? null;
+                }
+            }
             $existing->save();
 
             $existing->activities()->create([
@@ -199,7 +208,7 @@ class LeadIntake
 
     private const IGNORED_KEY = '/^(token|wpnonce|wpcf7.*|grecaptcharesponse|hcaptcharesponse|cfturnstileresponse|csrf.*|action|submit|redirect|next|referer|referertitle|postid|queriedid|password.*|pass|cvv|cvc|cardnumber|ccnumber)$/';
 
-    private const ATTRIBUTION_KEY = '/^(utm_(source|medium|campaign|term|content)|gclid|gbraid|wbraid|msclkid|dclid|fbclid|ttclid|li_fat_id|landing_?page|page_?url|referr?er|first_seen)$/i';
+    private const ATTRIBUTION_KEY = '/^(utm_(source|medium|campaign|term|content|id)|gad_campaignid|gad_source|campaignid|gclid|gbraid|wbraid|msclkid|dclid|fbclid|ttclid|li_fat_id|landing_?page|page_?url|referr?er|first_seen)$/i';
 
     /**
      * Accepts the embed script's shape ({fields, attribution, page, form}) or any

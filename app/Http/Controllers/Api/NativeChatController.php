@@ -21,6 +21,9 @@ class NativeChatController extends Controller
             'public_key' => ['required', 'string', 'max:64'],
             'visitor_token' => ['sometimes', 'nullable', 'string', 'max:80'],
             'page_url' => ['sometimes', 'nullable', 'string', 'max:2048'],
+            // The page the visitor first arrived on (from an ad, it carries the campaign) and where from
+            'landing_page' => ['sometimes', 'nullable', 'string', 'max:2048'],
+            'referrer' => ['sometimes', 'nullable', 'string', 'max:2048'],
         ]);
 
         $website = Website::where('public_key', $data['public_key'])->first();
@@ -32,6 +35,8 @@ class NativeChatController extends Controller
             $website,
             $data['visitor_token'] ?? null,
             $data['page_url'] ?? null,
+            $data['landing_page'] ?? null,
+            $data['referrer'] ?? null,
         );
 
         $conversation = $result['conversation'];

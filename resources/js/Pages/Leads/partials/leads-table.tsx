@@ -20,6 +20,7 @@ export type LeadRowView = {
   source: string;
   channel: string;
   campaign: string | null;
+  campaignKey: string | null;
   websiteName: string;
   brandId: number | null;
   assigneeName: string | null;
@@ -314,8 +315,14 @@ export function LeadsTable({
                     <ChannelBadge channel={lead.channel} />
                   </div>
                 </td>
-                <td className="max-w-[180px] truncate text-slate-600" title={lead.campaign ?? undefined}>
-                  {lead.campaign ?? <span className="text-slate-400">—</span>}
+                <td className="max-w-[180px] truncate text-slate-600" title={lead.campaign ? `${lead.campaign}: show this campaign's leads` : undefined}>
+                  {lead.campaign && lead.campaignKey ? (
+                    <Link href={`/leads?campaign=${encodeURIComponent(lead.campaignKey)}`} className="hover:text-teal-700 hover:underline">
+                      {lead.campaign}
+                    </Link>
+                  ) : (
+                    lead.campaign ?? <span className="text-slate-400">—</span>
+                  )}
                 </td>
                 <td>
                   <StatusBadge status={lead.status} />

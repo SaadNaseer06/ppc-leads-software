@@ -97,6 +97,7 @@ class TeamDirectory
                 'view_finance' => $user->canViewFinance(),
                 'view_reports' => $user->canViewReports(),
                 'manage_websites' => $user->canManageWebsites(),
+                'manage_campaigns' => $user->canManageCampaigns(),
                 'manage_users' => $user->canManageUsers(),
                 'view_team' => $user->canViewTeam(),
                 'assign_brand_managers' => $user->canAssignBrandManagers(),

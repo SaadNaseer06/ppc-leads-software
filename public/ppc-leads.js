@@ -38,6 +38,8 @@
   var PARAMS = [
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
     "gclid", "gbraid", "wbraid", "msclkid", "dclid", "fbclid", "ttclid", "li_fat_id",
+    // The ad campaign's ID: Google adds gad_* by itself, the rest come from URL suffixes
+    "gad_campaignid", "gad_source", "utm_id", "campaignid",
   ];
   var SKIP_FIELD = /pass|card|cvv|cvc|ccnum|iban|ssn|captcha|csrf|nonce|^_?token$/i;
 

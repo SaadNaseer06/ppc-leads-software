@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
-import { Loader2, Search, X } from "lucide-react";
+import { Loader2, Megaphone, Search, X } from "lucide-react";
 import {
   CHANNEL_LABELS,
   LeadSource,
@@ -21,6 +21,7 @@ const PARAM_FOR: Record<keyof LeadFilters, string> = {
   website: "website",
   brand: "brand",
   assignee: "assignee",
+  campaign: "campaign",
   from: "from",
   to: "to",
 };
@@ -31,12 +32,14 @@ export function LeadFiltersBar({
   websites,
   brands,
   assignees,
+  campaignLabel,
 }: {
   filters: LeadFilters;
   pageSize: number;
   websites: (Option & { brand_id: number })[];
   brands: Option[];
   assignees: Option[];
+  campaignLabel: string | null;
 }) {
   const [pending, setPending] = useState(false);
   const [query, setQuery] = useState(filters.q ?? "");
@@ -95,6 +98,24 @@ export function LeadFiltersBar({
             <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
           ) : null}
         </div>
+
+        {filters.campaign ? (
+          <span className="inline-flex h-9 max-w-[260px] items-center gap-1.5 rounded-lg border border-teal-500 bg-teal-50/40 pl-3 pr-1 text-sm text-slate-700">
+            <Megaphone className="h-3.5 w-3.5 shrink-0 text-teal-700" />
+            <span className="truncate" title={campaignLabel ?? filters.campaign}>
+              {campaignLabel ?? filters.campaign}
+            </span>
+            <button
+              type="button"
+              className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+              onClick={() => navigate({ campaign: undefined })}
+              aria-label="Show every campaign"
+              title="Show every campaign"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        ) : null}
 
         <Select
           label="Status"
@@ -188,6 +209,7 @@ export function LeadFiltersBar({
                 channel: undefined,
                 website: undefined,
                 brand: undefined,
+                campaign: undefined,
                 from: undefined,
                 to: undefined,
               });

@@ -21,7 +21,7 @@ class LeadQuery
     /** Columns the list needs; all other columns stay on disk */
     private const LIST_COLUMNS = [
         'leads.id', 'leads.name', 'leads.email', 'leads.phone', 'leads.company', 'leads.status', 'leads.source',
-        'leads.channel', 'leads.utm_campaign', 'leads.submission_count', 'leads.created_at', 'leads.website_id',
+        'leads.channel', 'leads.utm_campaign', 'leads.campaign', 'leads.submission_count', 'leads.created_at', 'leads.website_id',
         'leads.brand_id', 'leads.assignee_id',
     ];
 
@@ -35,6 +35,7 @@ class LeadQuery
             'status' => $pick('status'),
             'source' => $pick('source'),
             'channel' => $pick('channel'),
+            'campaign' => ($c = $pick('campaign')) !== null ? mb_substr($c, 0, 150) : null,
             'website' => $pick('website'),
             'brand' => $pick('brand'),
             'assignee' => $pick('assignee'), // "unassigned" | "me" | user id
@@ -49,7 +50,7 @@ class LeadQuery
         $q = Lead::query()->visibleTo($user)->inInbox();
 
         isset($f['status']) ? $q->where('leads.status', $f['status']) : $q->where('leads.status', '!=', 'spam');
-        foreach (['source' => 'source', 'channel' => 'channel', 'website' => 'website_id', 'brand' => 'brand_id'] as $key => $column) {
+        foreach (['source' => 'source', 'channel' => 'channel', 'campaign' => 'campaign', 'website' => 'website_id', 'brand' => 'brand_id'] as $key => $column) {
             if (isset($f[$key])) {
                 $q->where("leads.{$column}", $f[$key]);
             }
@@ -93,7 +94,7 @@ class LeadQuery
             return null;
         }
         // These filters already narrow to a single ordered index range (or use FULLTEXT)
-        if (isset($f['brand']) || isset($f['website']) || isset($f['assignee']) || isset($f['q'])) {
+        if (isset($f['brand']) || isset($f['website']) || isset($f['assignee']) || isset($f['campaign']) || isset($f['q'])) {
             return null;
         }
         $brands = $user->brandIds();

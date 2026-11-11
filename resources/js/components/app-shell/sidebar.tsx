@@ -12,7 +12,7 @@ import {
   Users,
   UserCog,
   Wallet,
-  X, CreditCard, Eye, Inbox, Mail } from "lucide-react";
+  X, CreditCard, Eye, Inbox, Mail, Megaphone } from "lucide-react";
 import type { NavItem, NavKey } from "@/lib/rbac";
 import { BrandMark } from "@/components/brand-mark";
 import { Avatar } from "@/components/ui/avatar";
@@ -26,6 +26,7 @@ const ICONS: Record<NavKey, React.ComponentType<{ className?: string }>> = {
   invoices: FileText,
   finance: Wallet,
   reports: BarChart3,
+  campaigns: Megaphone,
   websites: Globe,
   team: UserCog,
   brands: Building2,

@@ -22,7 +22,9 @@ class LeadRowResource extends JsonResource
             'status' => $this->status,
             'source' => $this->source,
             'channel' => $this->channel,
-            'campaign' => $this->utm_campaign,
+            // Named by LeadController from the brand's campaign names
+            'campaign' => $this->campaign_label ?? $this->utm_campaign,
+            'campaign_key' => $this->campaign,
             'submission_count' => $this->submission_count,
             'created_at' => $this->created_at,
             'website' => $this->website?->only(['id', 'name']),

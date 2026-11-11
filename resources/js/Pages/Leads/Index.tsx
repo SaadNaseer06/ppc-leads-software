@@ -10,7 +10,7 @@ import { LeadsTable, type LeadRowView } from "./partials/leads-table";
 import { CreateLeadButton } from "./partials/create-lead-dialog";
 import { useLiveReload } from "@/components/app-shell/live-provider";
 
-const PASSED_PARAMS = ["q", "status", "source", "channel", "website", "brand", "assignee", "from", "to", "size"];
+const PASSED_PARAMS = ["q", "status", "source", "channel", "website", "brand", "assignee", "campaign", "from", "to", "size"];
 
 export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; lookups: Lookups; query: Record<string, string> }) {
   const user = usePage<SharedProps>().props.auth.user!;
@@ -56,6 +56,7 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
     source: l.source,
     channel: l.channel,
     campaign: l.campaign,
+    campaignKey: l.campaign_key,
     websiteName: l.website?.name ?? l.brand?.name ?? "—",
     brandId: l.brand?.id ?? null,
     assigneeName: l.assignee?.name ?? null,
@@ -133,6 +134,8 @@ export default function LeadsIndex({ page, lookups, query }: { page: LeadsPage; 
         websites={lookups.websites}
         brands={lookups.brands}
         assignees={canAssign ? lookups.assignees.map((a) => ({ id: String(a.id), name: a.name })) : []}
+        // Every row shares the campaign being filtered on, so any row's name for it will do
+        campaignLabel={page.leads[0]?.campaign ?? null}
       />
 
       <LeadsTable

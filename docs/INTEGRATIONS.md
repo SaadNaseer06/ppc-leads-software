@@ -17,10 +17,28 @@ Paste the snippet from the website's page before `</body>` on every page:
 - Stores the ad click and campaign when the visitor lands (`gclid`, `gbraid`, `wbraid`, `msclkid`,
   `fbclid`, `utm_*`, landing page, external referrer) for 90 days, so a lead that converts on a later page
   or a later visit is still attributed to the ad. A newer ad click replaces the older one.
+  The chat widget shares the same record, so a visitor who clicks an ad, browses on and then chats still counts
+  for that campaign.
 - Skips login/sign-up forms (anything with a password field), search forms, password/card fields and
   CAPTCHA tokens. Add `data-ppc-ignore` to any other form you don't want captured.
 - Options: `data-forms="form.quote"` (only matching forms), `data-debug` (log to the browser console).
 - For custom flows (multi-step widgets, SPAs): `window.PPCLeads.submit({ name, email, phone, message }, "Form name")`.
+
+### Campaigns
+
+Each lead is filed under the ad campaign it came from: the platform's campaign ID when the click carries one,
+otherwise the `utm_campaign` tag. Managers see every campaign under **Campaigns** and name each one once; the
+name then shows on every lead, in the leads list (click it to filter), in Reports and in CSV exports.
+
+- **Google Ads:** nothing to set up. With auto-tagging on (the default), Google adds `gad_campaignid` to every
+  ad click, so leads arrive with the campaign ID. Google doesn't send the campaign's name: in Google Ads,
+  add the *Campaign ID* column to the Campaigns table to see which ID is which, then name it here.
+  For keywords as well, set the account's **Final URL suffix** to
+  `utm_source=google&utm_medium=cpc&utm_term={keyword}&utm_content={adgroupid}`.
+- **Microsoft Ads:** set the account's **Final URL suffix** to
+  `utm_source=bing&utm_medium=cpc&utm_campaign={Campaign}&utm_id={CampaignId}&utm_term={keyword:default}`.
+  Microsoft fills in the campaign's real name.
+- **Anything else (Meta, TikTok, LinkedIn, email):** put `utm_campaign=<name>` in the ad's URL.
 
 ## 2. Webhook / API
 
@@ -38,7 +56,7 @@ Field names are matched loosely (case and punctuation are ignored):
 | Phone | `phone`, `tel`, `mobile`, `phone_number`, `whatsapp` |
 | Company | `company`, `business_name`, `organization` |
 | Message | `message`, `comments`, `your-message`, `enquiry`, `details` |
-| Attribution | `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `gclid`, `msclkid`, `landing_page`, `page_url`, `referrer` |
+| Attribution | `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `utm_id`, `gclid`, `msclkid`, `gad_campaignid`, `landing_page`, `page_url`, `referrer` |
 
 Any other fields are kept and shown on the lead under "Enquiry". A submission needs at least an email,
 phone or message. Responses: `201` new lead, `200` repeat submission merged into an existing lead,
