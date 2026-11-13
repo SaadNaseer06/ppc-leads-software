@@ -219,7 +219,7 @@ export default function Dashboard({ dashboard, range }: { dashboard: DashboardDa
               </Link>
             </div>
             {recentChats.length === 0 ? (
-              <p className="p-4 text-sm text-slate-500">No Tawk.to conversations yet.</p>
+              <p className="p-4 text-sm text-slate-500">No chats yet.</p>
             ) : (
               <ul className="divide-y divide-slate-100">
                 {recentChats.map((c) => (

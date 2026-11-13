@@ -11,8 +11,6 @@ export type WebsiteFormValues = {
   name: string;
   domain: string;
   brandId: number;
-  tawkPropertyId: string;
-  hasTawkSecret: boolean;
   active: boolean;
   chatEnabled: boolean;
 };
@@ -47,8 +45,6 @@ export function WebsiteForm({
         name: text("name"),
         domain: text("domain"),
         brand_id: Number(text("brandId")) || null,
-        tawk_property_id: text("tawkPropertyId") || null,
-        tawk_webhook_secret: text("tawkWebhookSecret") || null,
         active: form.get("active") === "on",
         chat_enabled: form.get("chatEnabled") === "on",
       },
@@ -94,36 +90,6 @@ export function WebsiteForm({
         Accept new leads from this website
       </label>
 
-      <details className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 sm:col-span-2">
-        <summary className="cursor-pointer text-sm font-medium text-slate-800">Legacy · Tawk.to (optional)</summary>
-        <p className="mt-1 text-xs text-slate-500">
-          Only needed for historical Tawk chats. New sites should use the PPC Leads chat widget instead.
-        </p>
-        <div className={`mt-3 grid gap-4 ${columns}`}>
-          <div>
-            <label className="label" htmlFor="w-tawk">Property ID</label>
-            <input
-              id="w-tawk"
-              className="input font-mono text-xs"
-              name="tawkPropertyId"
-              defaultValue={initial?.tawkPropertyId}
-              placeholder="e.g. 64f1c2a9b1d3e2001a7f0c11"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="w-secret">Webhook secret key</label>
-            <input
-              id="w-secret"
-              className="input font-mono text-xs"
-              name="tawkWebhookSecret"
-              type="password"
-              autoComplete="off"
-              placeholder={initial?.hasTawkSecret ? "•••••••• (saved — leave blank to keep)" : "Paste from Tawk.to"}
-            />
-          </div>
-        </div>
-      </details>
-
       {error ? <p className="text-sm text-red-600 sm:col-span-2">{error}</p> : null}
       <div className="flex justify-end gap-2 sm:col-span-2">
         <button type="submit" className="btn-primary" disabled={saving}>
@@ -146,7 +112,7 @@ export function AddWebsiteButton({ brands }: { brands: Brand[] }) {
         open={open}
         onClose={() => setOpen(false)}
         title="Add a website"
-        description="You'll get an embed snippet and webhook URL to start capturing leads."
+        description="You'll get an embed snippet to start capturing leads and chats."
         wide
       >
         <WebsiteForm

@@ -1,22 +1,15 @@
 import { Head, Link } from "@inertiajs/react";
 import { ArrowLeft, Code2, MessageSquare, Webhook } from "lucide-react";
 import type { WebsiteDetail } from "@/lib/api-types";
-import { formatDateTime, formatNumber, formatRelative } from "@/lib/format";
+import { formatNumber, formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/badges";
 import { CopyButton } from "@/components/ui/copy-button";
 import { WebsiteForm } from "./partials/website-form";
 import { DeleteWebsiteButton, RotateKeyButton, SendTestLeadButton } from "./partials/website-actions";
 
-const EVENT_STYLES: Record<string, string> = {
-  processed: "bg-emerald-50 text-emerald-700",
-  ignored: "bg-slate-100 text-slate-600",
-  rejected: "bg-red-50 text-red-700",
-  failed: "bg-red-50 text-red-700",
-};
-
 export default function WebsiteShow(data: WebsiteDetail) {
-  const { website, brands, events } = data;
+  const { website, brands } = data;
   const leads30d = data.leads_30d;
   const recentLeads = data.recent_leads;
   const now = new Date();
@@ -154,70 +147,6 @@ export default function WebsiteShow(data: WebsiteDetail) {
             </div>
           </section>
 
-          <details className="card">
-            <summary className="card-header cursor-pointer list-none">
-              <h2 className="card-title flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-slate-400" />
-                Legacy · Tawk.to (read-only history)
-              </h2>
-              {website.tawk_property_id ? (
-                <span className="badge bg-emerald-50 text-emerald-700">Linked</span>
-              ) : (
-                <span className="badge">Not linked</span>
-              )}
-            </summary>
-            <div className="space-y-4 border-t border-slate-100 p-4 text-sm text-slate-600">
-              <p className="text-xs text-slate-500">
-                New traffic should use the PPC Leads chat widget above. Keep Tawk linked only if you still need
-                historical chats or offline tickets.
-              </p>
-              <ol className="list-decimal space-y-2 pl-5">
-                <li>
-                  In Tawk.to open <strong>Administration → Settings → Webhooks</strong> and create a webhook.
-                </li>
-                <li>
-                  Set the endpoint URL to:
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1.5 text-xs">{website.tawk_webhook_url}</code>
-                    <CopyButton value={website.tawk_webhook_url} />
-                  </div>
-                </li>
-                <li>
-                  Tick <strong>Chat Start</strong>, <strong>Chat End</strong>, <strong>Chat Transcript Created</strong> and{" "}
-                  <strong>New Ticket</strong>.
-                </li>
-                <li>
-                  Copy the webhook&apos;s <strong>secret key</strong> and the <strong>property ID</strong> into the settings
-                  below.
-                </li>
-              </ol>
-              {website.tawk_property_id ? (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recent deliveries</p>
-                  {events.length === 0 ? (
-                    <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">
-                      Nothing received yet from Tawk.to for this property.
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
-                      {events.map((e) => (
-                        <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                          <span className="font-mono text-xs text-slate-700">{e.event}</span>
-                          <span className="flex items-center gap-2">
-                            {e.error ? <span className="text-xs text-red-600">{e.error}</span> : null}
-                            <span className={`badge ${EVENT_STYLES[e.status] ?? ""}`}>{e.status}</span>
-                            <span className="text-xs text-slate-400" title={formatDateTime(e.created_at)}>
-                              {formatRelative(e.created_at, now)}
-                            </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </details>
         </div>
 
         <div className="space-y-5">
@@ -260,8 +189,6 @@ export default function WebsiteShow(data: WebsiteDetail) {
                   name: website.name,
                   domain: website.domain,
                   brandId: website.brand_id,
-                  tawkPropertyId: website.tawk_property_id ?? "",
-                  hasTawkSecret: website.has_tawk_secret,
                   active: website.active,
                   chatEnabled: website.chat_enabled,
                 }}

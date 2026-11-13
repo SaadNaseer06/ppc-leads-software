@@ -12,7 +12,6 @@ import {
   MessageSquareOff,
   Send,
   Trash2,
-  TriangleAlert,
   UserPlus,
 } from "lucide-react";
 import type { Assignee, ChatMessage, ChatsData, ConversationRow, FrontSalesRep } from "@/lib/api-types";
@@ -86,7 +85,6 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
   const [assignees, setAssignees] = useState<Assignee[]>(initial.assignees ?? []);
   const [frontSales, setFrontSales] = useState<FrontSalesRep[]>(initial.front_sales ?? []);
   const [transferOpen, setTransferOpen] = useState(false);
-  const [unlinked, setUnlinked] = useState(initial.unlinked);
   const [openCount, setOpenCount] = useState(initial.open_count ?? 0);
   const [pusher, setPusher] = useState(initial.pusher);
   const [messages, setMessages] = useState<ChatMessage[]>(initial.selected?.messages ?? []);
@@ -125,7 +123,6 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
     listRef.current = data.conversations;
     setList(data.conversations);
     setHasMore(data.has_more);
-    setUnlinked(data.unlinked);
     setOpenCount(data.open_count ?? 0);
     setAssignees(data.assignees ?? []);
     setFrontSales(data.front_sales ?? []);
@@ -494,7 +491,7 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
       <Head title="Chats" />
       <PageHeader
         title="Chats"
-        description="Reply to website visitors in real time. Older Tawk.to threads stay available as read-only history."
+        description="Reply to website visitors in real time."
         actions={
           openCount > 0 ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200/80">
@@ -504,20 +501,6 @@ export default function Chats({ chats: initial, query: params }: { chats: ChatsD
           ) : null
         }
       />
-
-      {unlinked > 0 ? (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            {unlinked} conversation{unlinked === 1 ? "" : "s"} came from a Tawk.to property that isn&apos;t linked to a
-            website.{" "}
-            <Link href="/websites" className="font-medium underline">
-              Link the property
-            </Link>{" "}
-            to import them as leads.
-          </p>
-        </div>
-      ) : null}
 
       <div className="flex gap-1 border-b border-slate-200">
         {FILTERS.map((f) => {
